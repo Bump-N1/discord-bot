@@ -6,6 +6,7 @@ import { owCommand } from './ow.js';
 import { owHeroCommand } from './ow-hero.js';
 import { ff14ActCommand, owActCommand, lolActCommand } from './act.js';
 import { arkJoinCommand, arkSettingsCommand, arkStatusCommand } from './ark.js';
+import { poe2MarketCommand } from './poe2.js';
 
 const commands = [
     arkJoinCommand.toJSON(),
@@ -17,7 +18,8 @@ const commands = [
     owHeroCommand.toJSON(),
     lolActCommand.toJSON(),
     owActCommand.toJSON(),
-    ff14ActCommand.toJSON()
+    ff14ActCommand.toJSON(),
+    poe2MarketCommand.toJSON()
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
