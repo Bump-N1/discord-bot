@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 
-const IMAGE_WIDTH = 1000;
+const IMAGE_WIDTH = 760;
 const IMAGE_HEIGHT = 650;
 const JST_TIME_ZONE = 'Asia/Tokyo';
 const iconCache = new Map();
@@ -18,11 +18,22 @@ function buildImageSvg(snapshot, productIcons) {
     const title = 'PoE2 相場';
     const sourceText = escapeXml(buildSnapshotSourceText(snapshot));
     const footerText = escapeXml(buildFooterText(snapshot));
+    const headerIconScale = 16 / 21;
+    const headerIconSize = Math.round(42 * headerIconScale);
+    const itemHeaderX = 292;
+    const marketColumnCenterX = 600;
+    const marketHeaderLabelWidth = 32;
+    const marketHeaderGap = 8;
+    const marketHeaderWidth = marketHeaderLabelWidth + marketHeaderGap + headerIconSize;
+    const marketHeaderX = Math.round(marketColumnCenterX - (marketHeaderWidth / 2));
+    const headerIconX = marketHeaderX + marketHeaderLabelWidth + marketHeaderGap;
+    const headerIconY = Math.round(169 - ((37 - 11) * headerIconScale));
+    const marketValueRightX = headerIconX + headerIconSize;
     const exaltedIcon = productIcons[0]
-        ? `<image href="${productIcons[0]}" x="669" y="158" width="17" height="17" preserveAspectRatio="xMidYMid meet"/>`
+        ? `<image href="${productIcons[0]}" x="${headerIconX}" y="${headerIconY}" width="${headerIconSize}" height="${headerIconSize}" preserveAspectRatio="xMidYMid meet"/>`
         : '';
     const rows = snapshot.products.map(function(product, index) {
-        return buildProductRow(product, productIcons[index], index, snapshot.completedHour);
+        return buildProductRow(product, productIcons[index], index, snapshot.completedHour, marketValueRightX);
     }).join('');
 
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -34,40 +45,37 @@ function buildImageSvg(snapshot, productIcons) {
         </linearGradient>
     </defs>
     <rect width="${IMAGE_WIDTH}" height="${IMAGE_HEIGHT}" fill="#0d1118"/>
-    <rect x="18" y="18" width="964" height="614" rx="10" fill="#141a24" stroke="#303a49" stroke-width="2"/>
-    <rect x="18" y="18" width="964" height="118" rx="10" fill="url(#header)"/>
-    <rect x="18" y="126" width="964" height="10" fill="url(#header)"/>
-    <rect x="44" y="42" width="5" height="70" fill="#c99c51"/>
-    <text x="70" y="70" fill="#f5f7fb" font-size="32" font-weight="700" font-family="${fontFamily()}">${title}</text>
-    <text x="70" y="102" fill="#9ca9bc" font-size="18" font-family="${fontFamily()}">${sourceText}</text>
-    <text x="70" y="169" fill="#8997aa" font-size="16" font-weight="700" font-family="${fontFamily()}">アイテム</text>
-    <text x="630" y="169" fill="#8997aa" font-size="16" font-weight="700" font-family="${fontFamily()}">相場</text>
+    <rect x="18" y="18" width="724" height="614" rx="10" fill="#141a24" stroke="#303a49" stroke-width="2"/>
+    <rect x="18" y="18" width="724" height="118" rx="10" fill="url(#header)"/>
+    <rect x="18" y="126" width="724" height="10" fill="url(#header)"/>
+    <rect x="38" y="42" width="5" height="70" fill="#c99c51"/>
+    <text x="60" y="70" fill="#f5f7fb" font-size="32" font-weight="700" font-family="${fontFamily()}">${title}</text>
+    <text x="60" y="102" fill="#9ca9bc" font-size="18" font-family="${fontFamily()}">${sourceText}</text>
+    <text x="${itemHeaderX}" y="169" text-anchor="middle" fill="#8997aa" font-size="16" font-weight="700" font-family="${fontFamily()}">アイテム</text>
+    <text x="${marketHeaderX}" y="169" fill="#8997aa" font-size="16" font-weight="700" font-family="${fontFamily()}">相場</text>
     ${exaltedIcon}
-    <text x="848" y="169" fill="#8997aa" font-size="16" font-weight="700" font-family="${fontFamily()}">取引量</text>
     ${rows}
-    <text x="54" y="608" fill="#687488" font-size="14" font-family="${fontFamily()}">${footerText}</text>
+    <text x="40" y="608" fill="#687488" font-size="14" font-family="${fontFamily()}">${footerText}</text>
 </svg>`;
 }
 
-function buildProductRow(product, iconDataUrl, index, latestChangeId) {
+function buildProductRow(product, iconDataUrl, index, latestChangeId, marketValueRightX) {
     const y = 192 + (index * 63);
     const rowFill = index % 2 === 0 ? '#18202b' : '#141a24';
     const price = escapeXml(formatPrice(product));
-    const volume = escapeXml(formatVolume(product));
     const staleLabel = product.quoteChangeId && product.quoteChangeId !== latestChangeId
-        ? `<text x="522" y="${y + 46}" fill="#79879a" font-size="12" font-family="${fontFamily()}">${escapeXml(formatStaleQuote(product.quoteChangeId))}</text>`
+        ? `<text x="${marketValueRightX}" y="${y + 49}" text-anchor="end" fill="#79879a" font-size="12" font-family="${fontFamily()}">${escapeXml(formatStaleQuote(product.quoteChangeId))}</text>`
         : '';
     const icon = iconDataUrl
-        ? `<image href="${iconDataUrl}" x="72" y="${y + 11}" width="42" height="42" preserveAspectRatio="xMidYMid meet"/>`
-        : `<rect x="72" y="${y + 11}" width="42" height="42" rx="6" fill="#253142"/>`;
+        ? `<image href="${iconDataUrl}" x="54" y="${y + 11}" width="42" height="42" preserveAspectRatio="xMidYMid meet"/>`
+        : `<rect x="54" y="${y + 11}" width="42" height="42" rx="6" fill="#253142"/>`;
 
     return `
-    <rect x="54" y="${y}" width="892" height="60" rx="6" fill="${rowFill}"/>
+    <rect x="40" y="${y}" width="680" height="60" rx="6" fill="${rowFill}"/>
     ${icon}
-    <text x="134" y="${y + 37}" fill="#edf1f7" font-size="21" font-weight="600" font-family="${fontFamily()}">${escapeXml(product.label)}</text>
-    <text x="660" y="${y + 35}" text-anchor="end" fill="${product.lowestPrice === null ? '#728096' : '#f1c76e'}" font-size="20" font-weight="600" font-family="${fontFamily()}">${price}</text>
-    ${staleLabel}
-    <text x="848" y="${y + 35}" fill="#d5dce6" font-size="18" font-family="${fontFamily()}">${volume}</text>`;
+    <text x="114" y="${y + 37}" fill="#edf1f7" font-size="21" font-weight="600" font-family="${fontFamily()}">${escapeXml(product.label)}</text>
+    <text x="${marketValueRightX}" y="${y + 35}" text-anchor="end" fill="${product.lowestPrice === null ? '#728096' : '#f1c76e'}" font-size="20" font-weight="600" font-family="${fontFamily()}">${price}</text>
+    ${staleLabel}`;
 }
 
 async function loadIconDataUrl(iconUrl, userAgent) {
@@ -138,18 +146,6 @@ function formatNumber(value) {
         minimumFractionDigits: 2,
         maximumFractionDigits: 4
     });
-}
-
-function formatVolume(product) {
-    if (product.base) {
-        return '基準';
-    }
-
-    if (product.volume === null) {
-        return '-';
-    }
-
-    return Number(product.volume).toLocaleString('ja-JP');
 }
 
 function formatSnapshotPeriod(changeId) {
