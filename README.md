@@ -1,7 +1,7 @@
 # discord-bot
 
 個人用Discord Bot。
-ARKのサーバー案内、LoL / OWの戦績確認、FF14 / LoL / OWの募集作成に対応する。
+ARKのサーバー案内、PoE2の相場確認、LoL / OWの戦績確認、FF14 / LoL / OWの募集作成に対応する。
 
 ## コマンド
 
@@ -96,6 +96,33 @@ Bot稼働中に検知した直近の設定変更も表示する。
 
 Nitrado連携がある場合、`ARK_NOTIFY_CHANNEL_ID` のチャンネルへサーバー状態の変化を通知する。
 稼働状態はARKサーバーへの接続可否で確認し、オンラインになった時とオフラインになった時だけ投稿する。
+
+### PoE2
+
+#### `/poe2-market`
+
+実行したチャンネルでPoE2の相場画像の定期投稿を開始する。
+開始時に現在取得できる最新画像を投稿し、その後は1時間ごとに新しい相場画像を投稿する。
+同じチャンネルで再度実行すると定期投稿を停止する。
+
+```text
+/poe2-market
+```
+
+相場画像には、高貴のオーブ換算で以下を表示する。
+
+- 高貴のオーブ
+- カオスオーブ
+- 消去のオーブ
+- 神のオーブ
+- スキルジェム Lv20
+- スピリットジェム Lv20
+
+`POE2_MARKET_PROVIDER=auto` の場合は、公式認証情報がない間は申請不要の `poe.ninja` から暫定相場を取得し、認証情報を設定すると公式APIを使用する。
+暫定取得を固定する場合は `POE2_MARKET_PROVIDER=poe-ninja` を指定する。
+公式Currency Exchange APIを使用する場合は `POE2_MARKET_PROVIDER=official` とし、`service:cxapi` が利用できる認証情報を設定する。
+公式利用時は `POE2_ACCESS_TOKEN` を設定するか、`POE2_CLIENT_ID` と `POE2_CLIENT_SECRET` を設定してBot側でトークンを取得する。
+`POE2_LEAGUE` には取得対象リーグ、`POE2_USER_AGENT` にはアプリ名と連絡可能なPoEアカウント名を設定する。
 
 ### 戦績確認
 

@@ -14,6 +14,8 @@ import { startArkStatusMonitor } from './services/ark/ark-monitor.js';
 import { startArkConfigHistoryMonitor } from './services/ark/ark-config-history.js';
 import { startActMonitor } from './services/act/act-monitor.js';
 import { startActWebServer } from './services/act/act-web-server.js';
+import { handlePoe2MarketCommand } from './commands/poe2.js';
+import { startPoe2MarketMonitor } from './services/poe2/poe2-market-monitor.js';
 
 const client = new Client({
     intents: [
@@ -27,6 +29,7 @@ client.once('clientReady', function() {
     startArkConfigHistoryMonitor();
     startActMonitor(client);
     startActWebServer(client);
+    startPoe2MarketMonitor(client);
 });
 
 client.on('interactionCreate', async function(interaction) {
@@ -105,6 +108,11 @@ client.on('interactionCreate', async function(interaction) {
 
     if (interaction.commandName === 'act-ff14') {
         await handleActCommand(interaction);
+        return;
+    }
+
+    if (interaction.commandName === 'poe2-market') {
+        await handlePoe2MarketCommand(interaction);
         return;
     }
 });
