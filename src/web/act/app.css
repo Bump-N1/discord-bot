@@ -131,6 +131,7 @@ h2 {
 }
 
 .field {
+    min-width: 0;
     margin-bottom: 16px;
 }
 
@@ -152,6 +153,8 @@ input[type="text"],
 input[type="datetime-local"],
 select,
 textarea {
+    min-width: 0;
+    max-width: 100%;
     width: 100%;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -167,6 +170,29 @@ select {
     height: 44px;
 }
 
+input[type="datetime-local"] {
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
+/* iOS WebKit expands padded temporal inputs beyond their declared width. */
+.datetime-input {
+    min-width: 0;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #11161c;
+}
+
+.datetime-input input[type="datetime-local"] {
+    height: 42px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
 textarea {
     min-height: 82px;
     resize: vertical;
@@ -177,6 +203,15 @@ select:focus,
 textarea:focus {
     outline: 2px solid #517eea;
     outline-offset: -1px;
+}
+
+.datetime-input:focus-within {
+    outline: 2px solid #517eea;
+    outline-offset: -1px;
+}
+
+.datetime-input input:focus {
+    outline: none;
 }
 
 .event-summary {
@@ -287,6 +322,10 @@ textarea:focus {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
+}
+
+.controls-layout > * {
+    min-width: 0;
 }
 
 .choice-grid {
