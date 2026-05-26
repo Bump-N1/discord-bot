@@ -364,16 +364,12 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
             continue;
         }
 
-        const newPostedIds = mergePostedIds(latestPostedIds, getStoredPatchNoteIds(patchNote));
-        await savePostedIds(env, postedKey, newPostedIds);
-        await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(patchNote));
-
         try {
             await postToDiscord(webhookUrl, source.game, patchNote);
         } catch (error) {
             results.push({
                 game: source.game,
-                status: 'post_failed_saved_as_posted',
+                status: 'post_failed_retry_pending',
                 title: patchNote.title,
                 url: patchNote.url,
                 imageUrl: patchNote.imageUrl || '',
@@ -381,6 +377,10 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
             });
             continue;
         }
+
+        const newPostedIds = mergePostedIds(latestPostedIds, getStoredPatchNoteIds(patchNote));
+        await savePostedIds(env, postedKey, newPostedIds);
+        await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(patchNote));
 
         results.push({
             game: source.game,
@@ -599,32 +599,7 @@ async function parseRiotPatchNotes(listHtml, baseUrl, game) {
 async function parseOverwatchPatchNotes(html, baseUrl) {
     const text = htmlToText(html);
 
-    const titleMatches = [...text.matchAll(/\[(?:オーバーウォッチ 2|オーバーウォッチ)\][^。]{0,160}?おしらせ/g)];
-
-    if (titleMatches.length === 0) {
-        const englishTitle = findFirstMatch(text, [
-            /Overwatch 2 Retail Patch Notes[^。]{0,160}/
-        ]);
-
-        const date = findFirstMatch(text, [
-            /20\d{2}年\d{1,2}月\d{1,2}日/
-        ]);
-
-        if (!englishTitle) {
-            return null;
-        }
-
-        return {
-            id: `${date}:${englishTitle}`,
-            title: englishTitle,
-            description: '',
-            date: date,
-            url: baseUrl,
-            imageUrl: ''
-        };
-    }
-
-    const candidates = titleMatches.map(function(match) {
+    const japaneseCandidates = [...text.matchAll(/\[(?:オーバーウォッチ 2|オーバーウォッチ)\][^。]{0,160}?おしらせ/g)].map(function(match) {
         const title = cleanupText(match[0]);
         const date = findFirstMatch(title, [
             /20\d{2}年\d{1,2}月\d{1,2}日/
@@ -633,9 +608,28 @@ async function parseOverwatchPatchNotes(html, baseUrl) {
         return {
             title: title,
             date: date,
-            dateValue: convertJapaneseDateToNumber(date)
+            dateValue: convertOverwatchDateToNumber(date)
         };
     });
+
+    const englishCandidates = [...text.matchAll(/Overwatch(?: 2)? Retail Patch Notes\s*[-–—:]\s*([A-Z][a-z]+ \d{1,2}, 20\d{2})/g)].map(function(match) {
+        const title = cleanupText(match[0]);
+        const dateText = cleanupText(match[1]);
+
+        return {
+            title: title,
+            date: formatDateText(dateText),
+            dateValue: convertOverwatchDateToNumber(dateText)
+        };
+    });
+
+    const candidates = japaneseCandidates.concat(englishCandidates).filter(function(candidate) {
+        return candidate.dateValue > 0;
+    });
+
+    if (candidates.length === 0) {
+        return null;
+    }
 
     candidates.sort(function(a, b) {
         return b.dateValue - a.dateValue;
@@ -651,6 +645,26 @@ async function parseOverwatchPatchNotes(html, baseUrl) {
         url: baseUrl,
         imageUrl: ''
     };
+}
+
+function convertOverwatchDateToNumber(dateText) {
+    const japaneseDateValue = convertJapaneseDateToNumber(dateText);
+
+    if (japaneseDateValue) {
+        return japaneseDateValue;
+    }
+
+    const timestamp = Date.parse(String(dateText || ''));
+
+    if (Number.isNaN(timestamp)) {
+        return 0;
+    }
+
+    const date = new Date(timestamp);
+
+    return date.getUTCFullYear() * 10000
+        + (date.getUTCMonth() + 1) * 100
+        + date.getUTCDate();
 }
 
 async function parsePoe2PatchNotes(html, baseUrl) {
