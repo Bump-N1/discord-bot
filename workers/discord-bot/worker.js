@@ -52,13 +52,13 @@ const DISCORD_PRESENTATIONS = {
     },
     Genshin_NOTICE: {
         embedTitle: '📝 原神 告知更新',
-        color: 0xF2C94C,
+        color: 0x5865F2,
         botName: '📝 NOTICE【Genshin】',
         avatarUrl: 'https://www.google.com/s2/favicons?domain_url=https://genshin.hoyoverse.com&sz=128'
     },
     Genshin_NEWS: {
         embedTitle: '📝 原神 お知らせ更新',
-        color: 0x56CCF2,
+        color: 0x5865F2,
         botName: '📝 NEWS【Genshin】',
         avatarUrl: 'https://www.google.com/s2/favicons?domain_url=https://genshin.hoyoverse.com&sz=128'
     }
@@ -693,10 +693,7 @@ async function parsePoe2PatchNotes(html, baseUrl) {
         return null;
     }
 
-    patchLinks.sort(function(a, b) {
-        return compareVersionDesc(a.version, b.version);
-    });
-
+    // The forum lists new posts first; version order can differ for hotfixes.
     const latest = patchLinks[0];
 
     return {
@@ -2000,39 +1997,6 @@ function compareDottedVersion(versionA, versionB) {
     }
 
     return 0;
-}
-
-function compareVersionDesc(versionA, versionB) {
-    return compareVersion(versionB, versionA);
-}
-
-function compareVersion(versionA, versionB) {
-    const parsedA = parseVersion(versionA);
-    const parsedB = parseVersion(versionB);
-    const length = Math.max(parsedA.numbers.length, parsedB.numbers.length);
-
-    for (let i = 0; i < length; i++) {
-        const numberA = parsedA.numbers[i] || 0;
-        const numberB = parsedB.numbers[i] || 0;
-
-        if (numberA !== numberB) {
-            return numberA - numberB;
-        }
-    }
-
-    return parsedA.suffixValue - parsedB.suffixValue;
-}
-
-function parseVersion(version) {
-    const match = String(version).match(/^(\d+(?:\.\d+)*)([a-z]?)$/i);
-    const numbers = match ? match[1].split('.').map(Number) : [];
-    const suffix = match && match[2] ? match[2].toLowerCase() : '';
-    const suffixValue = suffix ? suffix.charCodeAt(0) - 96 : 0;
-
-    return {
-        numbers: numbers,
-        suffixValue: suffixValue
-    };
 }
 
 function extractDiscordRetryAfter(responseText) {
