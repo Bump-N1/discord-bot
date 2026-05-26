@@ -39,7 +39,7 @@ export async function handlePoe2MarketCommand(interaction) {
         });
 
         await interaction.editReply({
-            content: 'このチャンネルでPoE2相場画像の定期投稿を開始しました。最新の確定相場が更新されるたびに投稿します。'
+            content: 'このチャンネルでPoE2相場画像の定期投稿を開始しました。以降は1時間ごとに新しい相場画像を投稿します。'
         });
     } catch (error) {
         console.error('PoE2 market command failed:', error);
