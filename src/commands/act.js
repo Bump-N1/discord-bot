@@ -2,6 +2,7 @@
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
+    MessageFlags,
     ModalBuilder,
     SlashCommandBuilder,
     TextInputBuilder,
@@ -144,7 +145,7 @@ async function showActWebCreateLink(interaction) {
                     .setURL(url)
             )
         ],
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
     });
 }
 
@@ -297,14 +298,14 @@ export async function handleActComponent(interaction) {
                 await queuePartyMessageEdit(interaction.client, result.party.id);
                 await interaction.followUp({
                     content: result.message,
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
                 return true;
             }
 
             await interaction.reply({
                 content: result.message,
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
             return true;
         }
@@ -320,12 +321,12 @@ export async function handleActComponent(interaction) {
         if (interaction.deferred || interaction.replied) {
             await interaction.followUp({
                 content: `募集の更新に失敗しました。\n${error.message}`,
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
         } else {
             await interaction.reply({
                 content: `募集の更新に失敗しました。\n${error.message}`,
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
         }
 
@@ -339,7 +340,7 @@ async function showActWebManageLink(interaction, partyId) {
     if (!party?.webManaged) {
         await interaction.reply({
             content: '募集が見つかりません。',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -360,7 +361,7 @@ async function showActWebManageLink(interaction, partyId) {
                     .setURL(url)
             )
         ],
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
     });
 }
 
@@ -370,7 +371,7 @@ async function handleFf14JoinStart(interaction, partyId) {
     if (!party) {
         await interaction.reply({
             content: '募集が見つかりません。',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -378,7 +379,7 @@ async function handleFf14JoinStart(interaction, partyId) {
     if (party.status === ACT_STATUS_CLOSED) {
         await interaction.reply({
             content: 'この募集は締め切られています。',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -398,7 +399,7 @@ async function handleFf14RoleSelect(interaction, partyId) {
     if (!result.ok) {
         await interaction.reply({
             content: result.message,
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -414,7 +415,7 @@ async function handleFf14JobSelect(interaction, partyId) {
     if (!result.ok) {
         await interaction.reply({
             content: result.message,
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -440,7 +441,7 @@ async function respondWithFf14SelectionPrompt(interaction, party, selection) {
 
 function toMessageUpdate(messageBody) {
     const {
-        ephemeral,
+        flags,
         ...updateBody
     } = messageBody;
 
@@ -538,7 +539,7 @@ export async function handleActModalSubmit(interaction) {
         if (!result.ok) {
             await interaction.reply({
                 content: result.message,
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
             return true;
         }
@@ -550,12 +551,12 @@ export async function handleActModalSubmit(interaction) {
         if (interaction.deferred || interaction.replied) {
             await interaction.followUp({
                 content: `募集の編集に失敗しました。\n${error.message}`,
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
         } else {
             await interaction.reply({
                 content: `募集の編集に失敗しました。\n${error.message}`,
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
         }
 
@@ -572,7 +573,7 @@ async function handleActCreateModalSubmit(interaction, draftId) {
     if (!draft || draft.userId !== interaction.user.id) {
         await interaction.reply({
             content: '募集の作成情報が見つかりません。もう一度コマンドを実行してください。',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -582,7 +583,7 @@ async function handleActCreateModalSubmit(interaction, draftId) {
     if (validationError) {
         await interaction.reply({
             content: validationError,
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -612,7 +613,7 @@ async function showPartyEditModal(interaction, partyId) {
     if (!party) {
         await interaction.reply({
             content: '募集が見つかりません。',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -620,7 +621,7 @@ async function showPartyEditModal(interaction, partyId) {
     if (party.creatorId !== interaction.user.id) {
         await interaction.reply({
             content: '募集を編集できるのは作成者だけです。',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
