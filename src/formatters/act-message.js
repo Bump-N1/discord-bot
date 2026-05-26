@@ -3,6 +3,7 @@
     ButtonBuilder,
     ButtonStyle,
     EmbedBuilder,
+    MessageFlags,
     StringSelectMenuBuilder,
     StringSelectMenuOptionBuilder
 } from 'discord.js';
@@ -51,7 +52,7 @@ export async function buildFf14SelectionPrompt(party, guild, selection = {}) {
     return {
         content: role ? `${role.label}を選択中` : '参加内容を選択',
         components: components,
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
     };
 }
 
