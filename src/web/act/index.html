@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>募集 | discord-bot</title>
+    <link rel="icon" type="image/svg+xml" href="/act/favicon.svg">
+    <link rel="stylesheet" href="/act/app.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="brand">
+            <img id="gameLogo" class="game-logo" alt="">
+            <div>
+                <p class="brand-label">募集</p>
+                <h1 id="pageTitle">読み込み中</h1>
+            </div>
+        </div>
+        <span id="statusBadge" class="status-badge hidden"></span>
+    </header>
+
+    <main class="layout">
+        <section id="loadingView" class="state-view">
+            <p>読み込み中...</p>
+        </section>
+
+        <section id="errorView" class="state-view hidden">
+            <h2>開けませんでした</h2>
+            <p id="errorText"></p>
+        </section>
+
+        <section id="createView" class="hidden">
+            <form id="createForm" class="form-panel">
+                <h2>募集を作成</h2>
+                <div id="createContentField" class="field hidden">
+                    <label for="createContent">コンテンツ名</label>
+                    <input id="createContent" name="contentName" type="text" maxlength="100" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label for="createDatetime">開始日時</label>
+                    <input id="createDatetime" name="datetime" type="datetime-local" step="600" required>
+                </div>
+                <div class="field">
+                    <label for="createDetails">募集内容</label>
+                    <textarea id="createDetails" name="details" maxlength="1000" required></textarea>
+                </div>
+                <button class="primary command-button" type="submit">Discordに募集を投稿</button>
+            </form>
+        </section>
+
+        <section id="manageView" class="hidden">
+            <div class="event-summary">
+                <div>
+                    <h2 id="eventTitle"></h2>
+                    <p id="eventDatetime"></p>
+                    <p id="eventDetails"></p>
+                </div>
+                <p id="capacityText" class="capacity"></p>
+            </div>
+
+            <section class="roster-panel" aria-label="現在の編成">
+                <h2>現在の編成</h2>
+                <div id="roster"></div>
+            </section>
+
+            <div class="controls-layout">
+                <form id="joinForm" class="form-panel">
+                    <h2>参加内容</h2>
+                    <div id="preferenceFields">
+                        <fieldset class="field">
+                            <legend>第1希望</legend>
+                            <div id="firstChoices" class="choice-grid"></div>
+                        </fieldset>
+                        <div id="firstJobField" class="field hidden">
+                            <label for="firstJobChoice">第1希望のジョブ</label>
+                            <div class="icon-select">
+                                <img id="firstJobIcon" alt="">
+                                <select id="firstJobChoice"></select>
+                            </div>
+                        </div>
+                        <label class="toggle-row">
+                            <input id="fixedChoice" type="checkbox">
+                            <span>第1希望必須</span>
+                        </label>
+                        <fieldset class="field">
+                            <legend>第2希望</legend>
+                            <div id="secondChoices" class="choice-grid"></div>
+                        </fieldset>
+                        <div id="secondJobField" class="field hidden">
+                            <label for="secondJobChoice">第2希望のジョブ</label>
+                            <div class="icon-select">
+                                <img id="secondJobIcon" alt="">
+                                <select id="secondJobChoice"></select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="button-row">
+                        <button id="joinButton" class="primary command-button" type="submit">参加を保存</button>
+                        <button id="leaveButton" class="secondary command-button hidden" type="button">抜ける</button>
+                    </div>
+                </form>
+
+                <form id="editForm" class="form-panel hidden">
+                    <h2>募集を編集</h2>
+                    <div id="editContentField" class="field hidden">
+                        <label for="editContent">コンテンツ名</label>
+                        <input id="editContent" name="contentName" type="text" maxlength="100">
+                    </div>
+                    <div class="field">
+                        <label for="editDatetime">開始日時</label>
+                        <input id="editDatetime" name="datetime" type="datetime-local" step="600" required>
+                    </div>
+                    <div class="field">
+                        <label for="editDetails">募集内容</label>
+                        <textarea id="editDetails" name="details" maxlength="1000" required></textarea>
+                    </div>
+                    <div class="button-row">
+                        <button class="secondary command-button" type="submit">更新</button>
+                        <button id="closeButton" class="danger command-button" type="button"></button>
+                    </div>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <div id="notice" class="notice hidden" role="status"></div>
+    <script src="/act/app.js" type="module"></script>
+</body>
+</html>
