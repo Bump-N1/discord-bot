@@ -4,7 +4,7 @@ const LOCK_TTL_MILLISECONDS = LOCK_TTL_SECONDS * 1000;
 const LOCK_CONFIRM_WAIT_MILLISECONDS = 700;
 const POSTED_HISTORY_LIMIT = 100;
 const GENSHIN_APP_ID = 'a1b1f9d3315447cc';
-const GENSHIN_API_ROOT = 'https://api-os-takumi-static.hoyoverse.com';
+const GENSHIN_API_ROOT = 'https://sg-public-api-static.hoyoverse.com/content_v2_user';
 const GENSHIN_SITE_ROOT = 'https://genshin.hoyoverse.com';
 const GENSHIN_LANG_KEY = 'ja-jp';
 const DEFAULT_DISCORD_PRESENTATION = {
@@ -1375,11 +1375,11 @@ function extractGenshinNewsId(url) {
 }
 
 function buildGenshinContentListApiUrl(categoryId, pageSize) {
-    return `${GENSHIN_API_ROOT}/content_v2_user/app/${GENSHIN_APP_ID}/getContentList?iPage=1&sLangKey=${GENSHIN_LANG_KEY}&iChanId=${categoryId}&iPageSize=${pageSize}`;
+    return `${GENSHIN_API_ROOT}/app/${GENSHIN_APP_ID}/getContentList?iPage=1&sLangKey=${GENSHIN_LANG_KEY}&iChanId=${categoryId}&iPageSize=${pageSize}`;
 }
 
 function buildGenshinContentDetailApiUrl(articleId) {
-    return `${GENSHIN_API_ROOT}/content_v2_user/app/${GENSHIN_APP_ID}/getContent?iInfoId=${articleId}&sLangKey=${GENSHIN_LANG_KEY}`;
+    return `${GENSHIN_API_ROOT}/app/${GENSHIN_APP_ID}/getContent?iInfoId=${articleId}&sLangKey=${GENSHIN_LANG_KEY}`;
 }
 
 function extractXmlBlocks(xmlText, tagName) {
