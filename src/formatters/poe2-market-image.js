@@ -18,7 +18,7 @@ function buildImageSvg(snapshot, productIcons) {
     const title = 'PoE2 相場';
     const period = escapeXml(formatSnapshotPeriod(snapshot.completedHour));
     const exaltedIcon = productIcons[0]
-        ? `<image href="${productIcons[0]}" x="669" y="152" width="17" height="17" preserveAspectRatio="xMidYMid meet"/>`
+        ? `<image href="${productIcons[0]}" x="669" y="155" width="17" height="17" preserveAspectRatio="xMidYMid meet"/>`
         : '';
     const rows = snapshot.products.map(function(product, index) {
         return buildProductRow(product, productIcons[index], index, snapshot.completedHour);
@@ -54,7 +54,7 @@ function buildProductRow(product, iconDataUrl, index, latestChangeId) {
     const price = escapeXml(formatPrice(product));
     const volume = escapeXml(formatVolume(product));
     const staleLabel = product.quoteChangeId && product.quoteChangeId !== latestChangeId
-        ? `<text x="626" y="${y + 46}" fill="#79879a" font-size="12" font-family="${fontFamily()}">${escapeXml(formatStaleQuote(product.quoteChangeId))}</text>`
+        ? `<text x="588" y="${y + 46}" fill="#79879a" font-size="12" font-family="${fontFamily()}">${escapeXml(formatStaleQuote(product.quoteChangeId))}</text>`
         : '';
     const icon = iconDataUrl
         ? `<image href="${iconDataUrl}" x="72" y="${y + 11}" width="42" height="42" preserveAspectRatio="xMidYMid meet"/>`
@@ -64,7 +64,7 @@ function buildProductRow(product, iconDataUrl, index, latestChangeId) {
     <rect x="54" y="${y}" width="892" height="60" rx="6" fill="${rowFill}"/>
     ${icon}
     <text x="134" y="${y + 37}" fill="#edf1f7" font-size="21" font-weight="600" font-family="${fontFamily()}">${escapeXml(product.label)}</text>
-    <text x="758" y="${y + 35}" text-anchor="end" fill="${product.lowestPrice === null ? '#728096' : '#f1c76e'}" font-size="20" font-weight="600" font-family="${fontFamily()}">${price}</text>
+    <text x="720" y="${y + 35}" text-anchor="end" fill="${product.lowestPrice === null ? '#728096' : '#f1c76e'}" font-size="20" font-weight="600" font-family="${fontFamily()}">${price}</text>
     ${staleLabel}
     <text x="848" y="${y + 35}" fill="#d5dce6" font-size="18" font-family="${fontFamily()}">${volume}</text>`;
 }
