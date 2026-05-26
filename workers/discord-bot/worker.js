@@ -7,6 +7,62 @@ const GENSHIN_APP_ID = 'a1b1f9d3315447cc';
 const GENSHIN_API_ROOT = 'https://api-os-takumi-static.hoyoverse.com';
 const GENSHIN_SITE_ROOT = 'https://genshin.hoyoverse.com';
 const GENSHIN_LANG_KEY = 'ja-jp';
+const DEFAULT_DISCORD_PRESENTATION = {
+    embedTitle: '📝 パッチノート更新',
+    color: 0x5865F2,
+    botName: '📝 PATCHNOTE',
+    avatarUrl: ''
+};
+const DISCORD_PRESENTATIONS = {
+    LoL: {
+        embedTitle: '📝 LoL パッチノート更新',
+        color: 0x5865F2,
+        botName: '📝 PATCHNOTE【LoL】',
+        avatarUrl: 'https://www.google.com/s2/favicons?domain_url=https://www.leagueoflegends.com&sz=128'
+    },
+    TFT: {
+        embedTitle: '📝 TFT パッチノート更新',
+        color: 0x5865F2,
+        botName: '📝 PATCHNOTE【TFT】',
+        avatarUrl: 'https://www.google.com/s2/favicons?domain_url=https://teamfighttactics.leagueoflegends.com&sz=128'
+    },
+    OW: {
+        embedTitle: '📝 OW パッチノート更新',
+        color: 0x5865F2,
+        botName: '📝 PATCHNOTE【OW】',
+        avatarUrl: 'https://www.google.com/s2/favicons?domain_url=https://overwatch.blizzard.com&sz=128'
+    },
+    PoE2: {
+        embedTitle: '📝 PoE2 パッチノート更新',
+        color: 0x5865F2,
+        botName: '📝 PATCHNOTE【PoE2】',
+        avatarUrl: 'https://www.google.com/s2/favicons?domain_url=https://jp.pathofexile.com&sz=128'
+    },
+    FF14: {
+        embedTitle: '📝 FF14 パッチノート更新',
+        color: 0x5865F2,
+        botName: '📝 PATCHNOTE【FF14】',
+        avatarUrl: 'https://www.google.com/s2/favicons?domain_url=https://jp.finalfantasyxiv.com&sz=128'
+    },
+    FF14_MAINTENANCE: {
+        embedTitle: '🔨 FF14 メンテナンス情報更新',
+        color: 0xE53935,
+        botName: '🔨 MAINTENANCE【FF14】',
+        avatarUrl: 'https://www.google.com/s2/favicons?domain_url=https://jp.finalfantasyxiv.com&sz=128'
+    },
+    Genshin_NOTICE: {
+        embedTitle: '📝 原神 告知更新',
+        color: 0xF2C94C,
+        botName: '📝 NOTICE【Genshin】',
+        avatarUrl: 'https://www.google.com/s2/favicons?domain_url=https://genshin.hoyoverse.com&sz=128'
+    },
+    Genshin_NEWS: {
+        embedTitle: '📝 原神 お知らせ更新',
+        color: 0x56CCF2,
+        botName: '📝 NEWS【Genshin】',
+        avatarUrl: 'https://www.google.com/s2/favicons?domain_url=https://genshin.hoyoverse.com&sz=128'
+    }
+};
 
 const SOURCES = [
     {
@@ -79,15 +135,11 @@ const SOURCES = [
 ];
 
 export default {
-    async scheduled(controller, env, ctx) {
-        ctx.waitUntil((async function() {
-            const results = await checkPatchNotes(env);
-
-            console.log(JSON.stringify(results, null, 2));
-        })());
+    async scheduled(_controller, env, ctx) {
+        ctx.waitUntil(runScheduledCheck(env));
     },
 
-    async fetch(request, env) {
+    async fetch(_request, env) {
         const results = await checkPatchNotes(env);
 
         return new Response(JSON.stringify(results, null, 2), {
@@ -97,6 +149,12 @@ export default {
         });
     }
 };
+
+async function runScheduledCheck(env) {
+    const results = await checkPatchNotes(env);
+
+    console.log(JSON.stringify(results, null, 2));
+}
 
 async function checkPatchNotes(env) {
     const lock = await acquireExecutionLock(env);
@@ -220,11 +278,7 @@ async function releaseExecutionLock(env, token) {
 }
 
 function createLockToken() {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        return crypto.randomUUID();
-    }
-
-    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return crypto.randomUUID();
 }
 
 async function getJsonValue(env, key) {
@@ -1382,6 +1436,7 @@ function extractAttributeValue(text, tagName, attributeName) {
 
 async function postToDiscord(webhookUrl, game, patchNote) {
     const descriptionLines = [];
+    const presentation = getDiscordPresentation(game);
 
     descriptionLines.push(`**${patchNote.title}**`);
 
@@ -1402,10 +1457,10 @@ async function postToDiscord(webhookUrl, game, patchNote) {
     descriptionLines.push(patchNote.url);
 
     const embed = {
-        title: getEmbedTitle(game),
+        title: presentation.embedTitle,
         url: patchNote.url,
         description: truncateText(descriptionLines.join('\n'), 3900),
-        color: getEmbedColor(game),
+        color: presentation.color,
         timestamp: new Date().toISOString()
     };
 
@@ -1416,8 +1471,8 @@ async function postToDiscord(webhookUrl, game, patchNote) {
     }
 
     const payload = {
-        username: getBotName(game),
-        avatar_url: getBotAvatarUrl(game),
+        username: presentation.botName,
+        avatar_url: presentation.avatarUrl,
         embeds: [embed]
     };
 
@@ -1881,7 +1936,7 @@ function convertGenshinDateToNumber(dateText) {
         return year * 100000000 + month * 1000000 + day * 10000 + hour * 100 + minute;
     }
 
-    const isoDateTimeMatch = String(dateText).match(/(20\d{2})[-/](\\d{1,2})[-/](\\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2}))?/);
+    const isoDateTimeMatch = String(dateText).match(/(20\d{2})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2}))?/);
 
     if (isoDateTimeMatch) {
         const year = Number(isoDateTimeMatch[1]);
@@ -1994,110 +2049,9 @@ function truncateText(text, maxLength) {
     return `${text.slice(0, maxLength - 3)}...`;
 }
 
-function getEmbedTitle(game) {
-    if (game === 'FF14_MAINTENANCE') {
-        return `${getGameEmoji(game)} FF14 メンテナンス情報更新`;
-    }
-
-    if (game === 'Genshin_NOTICE') {
-        return `${getGameEmoji(game)} 原神 告知更新`;
-    }
-
-    if (game === 'Genshin_NEWS') {
-        return `${getGameEmoji(game)} 原神 お知らせ更新`;
-    }
-
-    return `${getGameEmoji(game)} ${game} パッチノート更新`;
-}
-
-function getGameEmoji(game) {
-    if (game === 'FF14_MAINTENANCE') {
-        return '🔨';
-    }
-
-    return '📝';
-}
-
-function getEmbedColor(game) {
-    if (game === 'FF14_MAINTENANCE') {
-        return 0xE53935;
-    }
-
-    if (game === 'Genshin_NOTICE') {
-        return 0xF2C94C;
-    }
-
-    if (game === 'Genshin_NEWS') {
-        return 0x56CCF2;
-    }
-
-    return 0x5865F2;
-}
-
-function getBotName(game) {
-    if (game === 'FF14_MAINTENANCE') {
-        return '🔨 MAINTENANCE【FF14】';
-    }
-
-    if (game === 'FF14') {
-        return '📝 PATCHNOTE【FF14】';
-    }
-
-    if (game === 'Genshin_NOTICE') {
-        return '📝 NOTICE【Genshin】';
-    }
-
-    if (game === 'Genshin_NEWS') {
-        return '📝 NEWS【Genshin】';
-    }
-
-    if (game === 'LoL') {
-        return '📝 PATCHNOTE【LoL】';
-    }
-
-    if (game === 'OW') {
-        return '📝 PATCHNOTE【OW】';
-    }
-
-    if (game === 'PoE2') {
-        return '📝 PATCHNOTE【PoE2】';
-    }
-
-    if (game === 'TFT') {
-        return '📝 PATCHNOTE【TFT】';
-    }
-
-    return '📝 PATCHNOTE';
-}
-
-function getBotAvatarUrl(game) {
-    if (game === 'FF14_MAINTENANCE') {
-        return 'https://www.google.com/s2/favicons?domain_url=https://jp.finalfantasyxiv.com&sz=128';
-    }
-
-    if (game === 'FF14') {
-        return 'https://www.google.com/s2/favicons?domain_url=https://jp.finalfantasyxiv.com&sz=128';
-    }
-
-    if (game === 'Genshin_NOTICE' || game === 'Genshin_NEWS') {
-        return 'https://www.google.com/s2/favicons?domain_url=https://genshin.hoyoverse.com&sz=128';
-    }
-
-    if (game === 'LoL') {
-        return 'https://www.google.com/s2/favicons?domain_url=https://www.leagueoflegends.com&sz=128';
-    }
-
-    if (game === 'OW') {
-        return 'https://www.google.com/s2/favicons?domain_url=https://overwatch.blizzard.com&sz=128';
-    }
-
-    if (game === 'PoE2') {
-        return 'https://www.google.com/s2/favicons?domain_url=https://jp.pathofexile.com&sz=128';
-    }
-
-    if (game === 'TFT') {
-        return 'https://www.google.com/s2/favicons?domain_url=https://teamfighttactics.leagueoflegends.com&sz=128';
-    }
-
-    return '';
+function getDiscordPresentation(game) {
+    return DISCORD_PRESENTATIONS[game] || {
+        ...DEFAULT_DISCORD_PRESENTATION,
+        embedTitle: `📝 ${game} パッチノート更新`
+    };
 }
