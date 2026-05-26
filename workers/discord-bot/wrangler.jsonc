@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "discord-bot",
+  "main": "worker.js",
+  "compatibility_date": "2026-04-30",
+  "keep_vars": true,
+  "workers_dev": true,
+  "kv_namespaces": [
+    {
+      "binding": "PATCHNOTE_KV",
+      "id": "c9533847680b4c1a857724fdfc355d11"
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "*/15 * * * *"
+    ]
+  }
+}

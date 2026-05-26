@@ -147,6 +147,22 @@ npm start
 環境変数の一覧は `.env.example` を参照。
 募集Web画面を使用する場合は `ACT_WEB_BASE_URL` に外部から開けるURL、`ACT_WEB_SIGNING_SECRET` にランダムな秘密値を設定する。
 
+## Cloudflare Workers
+
+パッチノート・メンテナンス情報の通知Workerは `workers/discord-bot` に配置する。
+LoL / TFT / OW / PoE2 / FF14 / 原神の更新情報を定期確認し、更新時のみDiscord Webhookへ投稿する。
+
+CloudflareのGit連携設定。
+
+```text
+Worker名: discord-bot
+Root directory: workers/discord-bot
+Deploy command: npx wrangler deploy
+```
+
+`PATCHNOTE_KV` は投稿済み履歴と多重実行防止に利用するため、既存のKV Namespaceを [wrangler.jsonc](./workers/discord-bot/wrangler.jsonc) に割り当てている。
+Discord Webhook URLはCloudflare上のSecretとして管理し、リポジトリには記載しない。
+
 ## Oracle Cloud での運用
 
 配置先ディレクトリとPM2プロセス名は `discord-bot` で統一する。
