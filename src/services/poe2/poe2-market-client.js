@@ -1,4 +1,8 @@
-import { getPoe2MarketConfig, validatePoe2MarketConfig } from './poe2-market-config.js';
+import {
+    getPoe2MarketConfig,
+    shouldUseOfficialMarketApi,
+    validatePoe2MarketConfig
+} from './poe2-market-config.js';
 import {
     POE2_MARKET_BASE_CURRENCY_ID,
     POE2_MARKET_PRODUCTS
@@ -6,6 +10,7 @@ import {
 
 const TOKEN_URL = 'https://www.pathofexile.com/oauth/token';
 const API_ROOT = 'https://api.pathofexile.com';
+const POE_NINJA_API_ROOT = 'https://poe.ninja/poe2/api/economy/exchange/current/overview';
 const HOUR_SECONDS = 60 * 60;
 let requestedAccessToken = null;
 
@@ -13,6 +18,14 @@ export async function fetchPoe2MarketSnapshot(now = new Date()) {
     const config = getPoe2MarketConfig();
     validatePoe2MarketConfig(config);
 
+    if (!shouldUseOfficialMarketApi(config)) {
+        return await fetchPoeNinjaMarketSnapshot(config, now);
+    }
+
+    return await fetchOfficialMarketSnapshot(config, now);
+}
+
+async function fetchOfficialMarketSnapshot(config, now) {
     const accessToken = await getAccessToken(config);
     const latestCompletedHour = getLatestCompletedHour(now);
     const quotesByProductId = new Map();
@@ -45,6 +58,7 @@ export async function fetchPoe2MarketSnapshot(now = new Date()) {
     }
 
     return {
+        source: 'official',
         league: config.league,
         changeId: String(availableHour),
         completedHour: availableHour,
@@ -70,6 +84,104 @@ export async function fetchPoe2MarketSnapshot(now = new Date()) {
             };
         })
     };
+}
+
+async function fetchPoeNinjaMarketSnapshot(config, now) {
+    const [currencyOverview, gemOverview] = await Promise.all([
+        fetchPoeNinjaOverview(config, 'Currency'),
+        fetchPoeNinjaOverview(config, 'UncutGems')
+    ]);
+    const overviews = [currencyOverview, gemOverview];
+    const hourlyBucket = getCurrentHour(now);
+
+    return {
+        source: 'poe-ninja',
+        league: config.league,
+        changeId: `poe-ninja:${hourlyBucket}`,
+        completedHour: hourlyBucket,
+        capturedAt: now.toISOString(),
+        products: POE2_MARKET_PRODUCTS.map(function(product) {
+            if (product.base) {
+                return {
+                    ...product,
+                    lowestPrice: 1,
+                    highestPrice: 1,
+                    volume: null,
+                    quoteChangeId: hourlyBucket
+                };
+            }
+
+            const overview = overviews.find(function(candidate) {
+                return (candidate.lines || []).some(function(entry) {
+                    return entry.id === product.id;
+                });
+            });
+            const line = (overview?.lines || []).find(function(entry) {
+                return entry.id === product.id;
+            });
+            const primaryValue = Number(line?.primaryValue);
+            const exaltedPerPrimary = getPoeNinjaExaltedPerPrimary(overview?.core);
+
+            if (!Number.isFinite(primaryValue)
+                || primaryValue <= 0
+                || !Number.isFinite(exaltedPerPrimary)
+                || exaltedPerPrimary <= 0) {
+                return {
+                    ...product,
+                    lowestPrice: null,
+                    highestPrice: null,
+                    volume: null,
+                    quoteChangeId: null
+                };
+            }
+
+            return {
+                ...product,
+                lowestPrice: primaryValue * exaltedPerPrimary,
+                highestPrice: primaryValue * exaltedPerPrimary,
+                volume: calculatePoeNinjaVolume(line),
+                quoteChangeId: hourlyBucket
+            };
+        })
+    };
+}
+
+function getPoeNinjaExaltedPerPrimary(core) {
+    if (core?.primary === POE2_MARKET_BASE_CURRENCY_ID) {
+        return 1;
+    }
+
+    return Number(core?.rates?.[POE2_MARKET_BASE_CURRENCY_ID]);
+}
+
+async function fetchPoeNinjaOverview(config, type) {
+    const query = new URLSearchParams({
+        league: config.league,
+        type: type
+    });
+    const response = await fetch(`${POE_NINJA_API_ROOT}?${query.toString()}`, {
+        headers: {
+            'User-Agent': config.userAgent,
+            Accept: 'application/json'
+        }
+    });
+
+    if (!response.ok) {
+        throw await buildResponseError('poe.ninja market request failed', response);
+    }
+
+    return await response.json();
+}
+
+function calculatePoeNinjaVolume(line) {
+    const value = Number(line?.volumePrimaryValue);
+    const price = Number(line?.primaryValue);
+
+    if (!Number.isFinite(value) || !Number.isFinite(price) || price <= 0) {
+        return null;
+    }
+
+    return Math.round(value / price);
 }
 
 async function getAccessToken(config) {
@@ -194,6 +306,10 @@ function hasAllQuotes(quotesByProductId) {
 
 function getLatestCompletedHour(now) {
     return Math.floor(now.getTime() / (HOUR_SECONDS * 1000)) * HOUR_SECONDS - HOUR_SECONDS;
+}
+
+function getCurrentHour(now) {
+    return Math.floor(now.getTime() / (HOUR_SECONDS * 1000)) * HOUR_SECONDS;
 }
 
 async function buildResponseError(prefix, response) {
