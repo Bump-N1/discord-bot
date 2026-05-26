@@ -412,12 +412,14 @@ textarea:focus {
 }
 
 .toggle-row {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 10px;
     height: 44px;
+    max-width: 100%;
     margin-bottom: 14px;
     color: var(--text);
+    cursor: pointer;
 }
 
 .toggle-row input {
