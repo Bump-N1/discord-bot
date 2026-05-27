@@ -1,5 +1,6 @@
 const POE2_JAPANESE_TRADE_DATA_ROOT = 'https://jp.pathofexile.com/api/trade2/data';
 const POE2_ENGLISH_TRADE_DATA_ROOT = 'https://www.pathofexile.com/api/trade2/data';
+const POE2_OFFICIAL_IMAGE_ROOT = 'https://www.pathofexile.com';
 const POE2_TRADE_DATA_TYPES = ['static', 'items'];
 const POE2_REALM = 'poe2';
 const LABEL_CACHE_MS = 24 * 60 * 60 * 1000;
@@ -14,27 +15,57 @@ let cachedLabels = null;
 let loadingLabels = null;
 let cachedEnglishLabels = null;
 let loadingEnglishLabels = null;
+let cachedMarketProducts = null;
+let loadingMarketProducts = null;
 
 export async function localizePoe2MarketProducts(products, userAgent) {
-    let labels;
+    let marketProducts;
 
     try {
-        labels = await getPoe2JapaneseItemLabels(userAgent);
+        marketProducts = await getPoe2JapaneseMarketProducts(userAgent);
     } catch (error) {
         console.warn('PoE2 Japanese item names could not be loaded:', error.message);
         return products;
     }
 
-    return products.map(function(product) {
-        const label = labels.get(product.id);
+    const marketProductById = new Map(marketProducts.map(function(product) {
+        return [product.id, product];
+    }));
 
-        return label
+    return products.map(function(product) {
+        const metadata = marketProductById.get(product.id);
+
+        return metadata
             ? {
                 ...product,
-                label: label
+                label: metadata.label,
+                category: metadata.category,
+                iconUrl: product.iconUrl || metadata.iconUrl,
+                sortOrder: metadata.sortOrder
             }
             : product;
     });
+}
+
+export async function getPoe2JapaneseMarketProducts(userAgent) {
+    if (cachedMarketProducts && cachedMarketProducts.expiresAt > Date.now()) {
+        return cachedMarketProducts.products;
+    }
+
+    if (!loadingMarketProducts) {
+        loadingMarketProducts = fetchPoe2MarketProducts(userAgent).finally(function() {
+            loadingMarketProducts = null;
+        });
+    }
+
+    const products = await loadingMarketProducts;
+
+    cachedMarketProducts = {
+        expiresAt: Date.now() + LABEL_CACHE_MS,
+        products: products
+    };
+
+    return products;
 }
 
 export async function getPoe2JapaneseItemLabels(userAgent) {
@@ -83,6 +114,49 @@ export async function localizePoe2MarketLabelTexts(labels, userAgent) {
         console.warn('PoE2 Japanese history names could not be loaded:', error.message);
         return labels;
     }
+}
+
+async function fetchPoe2MarketProducts(userAgent) {
+    const url = new URL(`${POE2_JAPANESE_TRADE_DATA_ROOT}/static`);
+
+    url.searchParams.set('realm', POE2_REALM);
+
+    const response = await fetch(url, {
+        headers: {
+            'User-Agent': userAgent,
+            Accept: 'application/json',
+            'Accept-Language': 'ja-JP,ja;q=0.9'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`official trade data request failed (${response.status})`);
+    }
+
+    const payload = await response.json();
+    const products = [];
+
+    for (const group of payload.result || []) {
+        for (const [sortOrder, entry] of (group.entries || []).entries()) {
+            const id = String(entry.id || '').trim();
+            const label = String(entry.text || '').trim();
+            const image = String(entry.image || '').trim();
+
+            if (!id || !label || !image) {
+                continue;
+            }
+
+            products.push({
+                id: id,
+                label: label,
+                category: String(group.id || ''),
+                iconUrl: new URL(image, POE2_OFFICIAL_IMAGE_ROOT).toString(),
+                sortOrder: sortOrder
+            });
+        }
+    }
+
+    return products;
 }
 
 async function getPoe2EnglishItemLabels(userAgent) {
