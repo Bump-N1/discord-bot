@@ -17,8 +17,6 @@ const API_ROOT = 'https://api.pathofexile.com';
 const POE_NINJA_API_ROOT = 'https://poe.ninja/poe2/api/economy/exchange/current/overview';
 const POE_NINJA_INDEX_STATE_URL = 'https://poe.ninja/poe2/api/data/index-state?';
 const POE_NINJA_IMAGE_ROOT = 'https://www.pathofexile.com';
-const POE_OVERLAY_MARKET_ROOT = 'https://www.poeoverlay.com/market-history/poe2';
-const POE_OVERLAY_INCURSION_CATEGORY = 'Incursion';
 const HOUR_SECONDS = 60 * 60;
 const CATALOG_CACHE_MS = 5 * 60 * 1000;
 const LEAGUE_CACHE_MS = 5 * 60 * 1000;
@@ -44,8 +42,11 @@ export async function fetchPoe2MarketCatalog() {
 
     const overviews = await fetchPoeNinjaOverviews(config);
     const productMap = new Map();
+    const knownProducts = new Map(getKnownPoe2MarketProducts().map(function(product) {
+        return [product.id, product];
+    }));
 
-    for (const product of getKnownPoe2MarketProducts()) {
+    for (const product of knownProducts.values()) {
         productMap.set(product.id, product);
     }
 
@@ -63,10 +64,12 @@ export async function fetchPoe2MarketCatalog() {
                 label: getPoeNinjaLabel(line, metadata),
                 iconUrl: normalizePoeNinjaIconUrl(getPoeNinjaIconUrl(line, metadata))
             });
-            const known = productMap.get(id);
+            const known = knownProducts.get(id);
 
             productMap.set(id, {
                 ...candidate,
+                label: known?.label || candidate.label,
+                category: known?.category || candidate.category,
                 iconUrl: known?.iconUrl || candidate.iconUrl
             });
         }
@@ -225,10 +228,9 @@ async function fetchPoeNinjaMarketSnapshot(config, selectedProducts, now) {
     ]));
     const overviews = await fetchPoeNinjaOverviews(config, requiredCategories);
     const hourlyBucket = getCurrentHour(now);
-    const overlayQuotes = await fetchPoeOverlayIncursionQuotes(config, selectedProducts, hourlyBucket);
 
     return {
-        source: overlayQuotes.size > 0 ? 'poe-ninja-overlay' : 'poe-ninja',
+        source: 'poe-ninja',
         league: config.league,
         changeId: `poe-ninja:${hourlyBucket}`,
         completedHour: hourlyBucket,
@@ -236,111 +238,10 @@ async function fetchPoeNinjaMarketSnapshot(config, selectedProducts, now) {
         products: selectedProducts.map(function(product) {
             return {
                 ...product,
-                prices: overlayQuotes.get(product.id)
-                    || buildPoeNinjaProductPrices(product, overviews, hourlyBucket)
+                prices: buildPoeNinjaProductPrices(product, overviews, hourlyBucket)
             };
         })
     };
-}
-
-async function fetchPoeOverlayIncursionQuotes(config, selectedProducts, quoteChangeId) {
-    if (!selectedProducts.some(function(product) {
-        return product.category === POE_OVERLAY_INCURSION_CATEGORY;
-    })) {
-        return new Map();
-    }
-
-    const quotes = new Map();
-    const selectedProductIds = new Set(selectedProducts.filter(function(product) {
-        return product.category === POE_OVERLAY_INCURSION_CATEGORY;
-    }).map(function(product) {
-        return product.id;
-    }));
-
-    await Promise.all(QUOTE_CURRENCY_IDS.map(async function(currencyId) {
-        try {
-            const html = await fetchPoeOverlayIncursionPage(config, currencyId);
-            const prices = parsePoeOverlayPrices(html, currencyId, quoteChangeId);
-
-            for (const [productId, price] of prices) {
-                if (!selectedProductIds.has(productId)) {
-                    continue;
-                }
-
-                const productQuotes = quotes.get(productId) || {};
-
-                productQuotes[currencyId] = price;
-                quotes.set(productId, productQuotes);
-            }
-        } catch (error) {
-            console.warn(`PoE Overlay ${currencyId} quote request failed:`, error.message);
-        }
-    }));
-
-    return quotes;
-}
-
-async function fetchPoeOverlayIncursionPage(config, currencyId) {
-    const leagueSlug = toUrlSlug(config.league);
-    const url = `${POE_OVERLAY_MARKET_ROOT}/${leagueSlug}/${currencyId.toLowerCase()}/incursion`;
-    const response = await fetch(url, {
-        headers: {
-            'User-Agent': config.userAgent,
-            Accept: 'text/html'
-        }
-    });
-
-    if (!response.ok) {
-        throw await buildResponseError('PoE Overlay market request failed', response);
-    }
-
-    return await response.text();
-}
-
-function parsePoeOverlayPrices(html, currencyId, quoteChangeId) {
-    const normalizedHtml = String(html || '')
-        .replace(/\\"/gu, '"')
-        .replace(/\\u0026/gu, '&');
-    const prices = new Map();
-    const rowPattern = new RegExp(
-        `data-id="([^":]+):${escapeRegex(currencyId)}"[\\s\\S]*?data-field="price"[\\s\\S]*?<span>([\\d.,KMB]+)<\\/span>`,
-        'giu'
-    );
-
-    for (const match of normalizedHtml.matchAll(rowPattern)) {
-        const price = parseAbbreviatedNumber(match[2]);
-
-        if (Number.isFinite(price) && price > 0) {
-            prices.set(match[1], createPrice(price, quoteChangeId));
-        }
-    }
-
-    return prices;
-}
-
-function parseAbbreviatedNumber(value) {
-    const text = String(value || '').replace(/,/gu, '').trim();
-    const match = text.match(/^([\d.]+)([KMB])?$/iu);
-
-    if (!match) {
-        return null;
-    }
-
-    const multiplier = {
-        K: 1000,
-        M: 1000000,
-        B: 1000000000
-    }[String(match[2] || '').toUpperCase()] || 1;
-
-    return Number(match[1]) * multiplier;
-}
-
-function toUrlSlug(value) {
-    return String(value || '')
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/gu, '-')
-        .replace(/^-|-$/gu, '');
 }
 
 async function fetchPoeNinjaOverviews(config, categoryKeys = POE2_MARKET_CATEGORIES.map(function(category) {
@@ -501,10 +402,6 @@ function normalizePoeNinjaIconUrl(value) {
     return url.protocol === 'https:' && allowedHosts.includes(url.hostname)
         ? url.toString()
         : '';
-}
-
-function escapeRegex(value) {
-    return String(value || '').replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function compareCatalogProducts(left, right) {
