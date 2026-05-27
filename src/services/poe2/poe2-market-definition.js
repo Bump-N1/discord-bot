@@ -20,16 +20,36 @@ export const POE2_MARKET_CATEGORIES = [
         label: 'Fragments'
     },
     {
+        key: 'Ritual',
+        label: 'Ritual'
+    },
+    {
+        key: 'Breach',
+        label: 'Breach'
+    },
+    {
+        key: 'Delirium',
+        label: 'Delirium'
+    },
+    {
+        key: 'Expedition',
+        label: 'Expedition'
+    },
+    {
+        key: 'Abyss',
+        label: 'Abyss'
+    },
+    {
+        key: 'Ultimatum',
+        label: 'Ultimatum'
+    },
+    {
         key: 'Runes',
         label: 'Runes'
     },
     {
         key: 'Essences',
         label: 'Essences'
-    },
-    {
-        key: 'Omens',
-        label: 'Omens'
     }
 ];
 

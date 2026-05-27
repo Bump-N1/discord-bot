@@ -6,6 +6,7 @@ import {
     SlashCommandBuilder
 } from 'discord.js';
 import { buildPoe2MarketEditUrl } from '../services/act/act-web-auth.js';
+import { registerEphemeralWebReply } from '../services/act/ephemeral-web-link.js';
 import { postCurrentPoe2MarketImage } from '../services/poe2/poe2-market-monitor.js';
 import {
     getPoe2MarketSettings,
@@ -98,6 +99,7 @@ export async function handlePoe2MarketEditCommand(interaction) {
             components: [row],
             flags: MessageFlags.Ephemeral
         });
+        registerEphemeralWebReply(url, interaction);
     } catch (error) {
         console.error('PoE2 market edit command failed:', error);
         await interaction.reply({

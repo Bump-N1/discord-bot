@@ -32,6 +32,7 @@ import {
     isActWebConfigured,
     verifyActWebToken
 } from './act-web-auth.js';
+import { dismissEphemeralWebReply } from './ephemeral-web-link.js';
 import { fetchPoe2MarketCatalog } from '../poe2/poe2-market-client.js';
 import { getPoe2MarketConfig } from '../poe2/poe2-market-config.js';
 import {
@@ -111,6 +112,11 @@ async function handleRequest(client, request, response) {
         return;
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/web-link-opened') {
+        await handleWebLinkOpenedRequest(request, response);
+        return;
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/poe2-market/session') {
         await handlePoe2MarketSessionRequest(url, response);
         return;
@@ -141,6 +147,22 @@ async function handleRequest(client, request, response) {
     sendJson(response, 404, {
         error: 'ページが見つかりません。'
     });
+}
+
+async function handleWebLinkOpenedRequest(request, response) {
+    try {
+        const body = await readJsonBody(request);
+
+        verifyActWebToken(body.token);
+        await dismissEphemeralWebReply(body.token);
+        sendJson(response, 200, {
+            ok: true
+        });
+    } catch (error) {
+        sendJson(response, 400, {
+            error: error.message
+        });
+    }
 }
 
 async function handlePoe2MarketSessionRequest(url, response) {

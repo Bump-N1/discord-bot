@@ -64,10 +64,22 @@ async function boot() {
 
     try {
         state.session = await request(`/api/act/session?token=${encodeURIComponent(token)}`);
+        clearLinkMessage();
         render();
     } catch (error) {
         showFatalError(error.message);
     }
+}
+
+function clearLinkMessage() {
+    request('/api/web-link-opened', {
+        method: 'POST',
+        body: {
+            token: token
+        }
+    }).catch(function() {
+        return null;
+    });
 }
 
 function bindEvents() {

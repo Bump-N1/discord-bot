@@ -35,10 +35,22 @@ async function boot() {
     try {
         state.session = await request(`/api/poe2-market/session?token=${encodeURIComponent(token)}`);
         state.selected = new Set(state.session.selectedProductIds);
+        clearLinkMessage();
         render();
     } catch (error) {
         showFatalError(error.message);
     }
+}
+
+function clearLinkMessage() {
+    request('/api/web-link-opened', {
+        method: 'POST',
+        body: {
+            token: token
+        }
+    }).catch(function() {
+        return null;
+    });
 }
 
 function render() {
