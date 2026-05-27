@@ -83,7 +83,7 @@ function renderCategories() {
         label: '選択中'
     }, {
         key: 'all',
-        label: 'All'
+        label: '全て'
     }, ...state.session.categories];
 
     elements.categoryTabs.replaceChildren();

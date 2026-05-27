@@ -119,26 +119,37 @@ h2 {
 .interval-control {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 0;
     height: 42px;
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 0 10px 0 6px;
+    overflow: hidden;
     color: var(--text);
     background: #11161c;
     cursor: pointer;
 }
 
 select {
-    width: 50px;
-    height: 38px;
+    width: 58px;
+    height: 40px;
     border: 0;
-    padding: 0 4px;
+    padding: 0 4px 0 12px;
     color: var(--text);
     background: #11161c;
     font: inherit;
     font-weight: 600;
     cursor: pointer;
+}
+
+.interval-unit {
+    display: inline-flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 11px 0 10px;
+    border-left: 1px solid #2b3745;
+    color: #e2e7ee;
+    background: #1d2631;
+    font-weight: 600;
 }
 
 .category-tabs {
