@@ -33,7 +33,12 @@ import {
     verifyActWebToken
 } from './act-web-auth.js';
 import { fetchPoe2MarketCatalog } from '../poe2/poe2-market-client.js';
-import { POE2_MARKET_MAX_PRODUCTS } from '../poe2/poe2-market-definition.js';
+import { getPoe2MarketConfig } from '../poe2/poe2-market-config.js';
+import {
+    POE2_MARKET_MAX_POST_INTERVAL_HOURS,
+    POE2_MARKET_MAX_PRODUCTS,
+    POE2_MARKET_MIN_POST_INTERVAL_HOURS
+} from '../poe2/poe2-market-definition.js';
 import {
     getPoe2MarketSettings,
     savePoe2MarketSettings
@@ -43,6 +48,7 @@ const WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'act');
 const POE2_WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'poe2-market');
 const ASSET_ROOT = path.resolve(process.cwd(), 'assets');
 const completedCreateTokens = new Set();
+const poe2IconCache = new Map();
 
 export function startActWebServer(client) {
     if (!isActWebConfigured()) {
@@ -110,6 +116,11 @@ async function handleRequest(client, request, response) {
         return;
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/poe2-market/icon') {
+        await handlePoe2MarketIconRequest(url, response);
+        return;
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/poe2-market/settings') {
         await handlePoe2MarketSettingsRequest(request, response);
         return;
@@ -138,7 +149,7 @@ async function handlePoe2MarketSessionRequest(url, response) {
         const catalog = await fetchPoe2MarketCatalog();
         const settings = await getPoe2MarketSettings(payload.guildId);
 
-        sendJson(response, 200, buildPoe2MarketSession(payload, catalog, settings));
+        sendJson(response, 200, buildPoe2MarketSession(payload, catalog, settings, url.searchParams.get('token')));
     } catch (error) {
         sendJson(response, 400, {
             error: error.message
@@ -155,9 +166,16 @@ async function handlePoe2MarketSettingsRequest(request, response) {
                 ? body.selectedProductIds.map(String)
                 : []
         ));
+        const postIntervalHours = Number(body.postIntervalHours);
 
         if (selectedProductIds.length > POE2_MARKET_MAX_PRODUCTS) {
             throw new Error(`表示できるアイテムは${POE2_MARKET_MAX_PRODUCTS}件までです。`);
+        }
+
+        if (!Number.isInteger(postIntervalHours)
+            || postIntervalHours < POE2_MARKET_MIN_POST_INTERVAL_HOURS
+            || postIntervalHours > POE2_MARKET_MAX_POST_INTERVAL_HOURS) {
+            throw new Error('投稿頻度は1時間から24時間の範囲で指定してください。');
         }
 
         const catalog = await fetchPoe2MarketCatalog();
@@ -174,9 +192,12 @@ async function handlePoe2MarketSettingsRequest(request, response) {
             throw new Error('選択したアイテムの一部を取得できませんでした。画面を更新してください。');
         }
 
-        const settings = await savePoe2MarketSettings(payload.guildId, selectedProducts, payload.userId);
+        const settings = await savePoe2MarketSettings(payload.guildId, selectedProducts, payload.userId, {
+            postIntervalHours: postIntervalHours,
+            updatedByName: payload.displayName
+        });
 
-        sendJson(response, 200, buildPoe2MarketSession(payload, catalog, settings));
+        sendJson(response, 200, buildPoe2MarketSession(payload, catalog, settings, body.token));
     } catch (error) {
         sendJson(response, 400, {
             error: error.message
@@ -184,17 +205,100 @@ async function handlePoe2MarketSettingsRequest(request, response) {
     }
 }
 
-function buildPoe2MarketSession(payload, catalog, settings) {
+async function handlePoe2MarketIconRequest(url, response) {
+    try {
+        verifyActWebToken(url.searchParams.get('token'), 'poe2-market-edit');
+        const id = String(url.searchParams.get('id') || '');
+        const catalog = await fetchPoe2MarketCatalog();
+        const product = catalog.products.find(function(candidate) {
+            return candidate.id === id;
+        });
+
+        if (!product?.iconUrl) {
+            sendJson(response, 404, {
+                error: '画像が見つかりません。'
+            });
+            return;
+        }
+
+        await sendPoe2MarketIcon(response, product.iconUrl);
+    } catch (error) {
+        sendJson(response, 404, {
+            error: error.message
+        });
+    }
+}
+
+function buildPoe2MarketSession(payload, catalog, settings, token) {
     return {
         actorName: payload.displayName,
         league: catalog.league,
         maxProducts: POE2_MARKET_MAX_PRODUCTS,
         categories: catalog.categories,
-        products: catalog.products,
+        products: catalog.products.map(function(product) {
+            return {
+                ...product,
+                iconUrl: product.iconUrl
+                    ? `/api/poe2-market/icon?token=${encodeURIComponent(token)}&id=${encodeURIComponent(product.id)}`
+                    : ''
+            };
+        }),
         selectedProductIds: settings.selectedProducts.map(function(product) {
             return product.id;
         }),
+        postIntervalHours: settings.postIntervalHours,
+        history: settings.history.map(function(entry) {
+            return {
+                updatedByName: entry.updatedByName,
+                updatedAt: entry.updatedAt,
+                selectedCount: entry.selectedCount,
+                selectedLabels: Array.isArray(entry.selectedLabels) ? entry.selectedLabels : [],
+                postIntervalHours: entry.postIntervalHours
+            };
+        }),
         configured: Boolean(settings.configured)
+    };
+}
+
+async function sendPoe2MarketIcon(response, iconUrl) {
+    if (!poe2IconCache.has(iconUrl)) {
+        poe2IconCache.set(iconUrl, fetchPoe2MarketIcon(iconUrl).catch(function(error) {
+            poe2IconCache.delete(iconUrl);
+            throw error;
+        }));
+    }
+
+    const icon = await poe2IconCache.get(iconUrl);
+
+    response.writeHead(200, {
+        'Content-Type': icon.contentType,
+        'Cache-Control': 'private, max-age=86400'
+    });
+    response.end(icon.contents);
+}
+
+async function fetchPoe2MarketIcon(iconUrl) {
+    const config = getPoe2MarketConfig();
+    const response = await fetch(iconUrl, {
+        headers: {
+            'User-Agent': config.userAgent,
+            Accept: 'image/*'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('画像を取得できませんでした。');
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/png';
+
+    if (!contentType.startsWith('image/')) {
+        throw new Error('画像を取得できませんでした。');
+    }
+
+    return {
+        contentType: contentType,
+        contents: Buffer.from(await response.arrayBuffer())
     };
 }
 
@@ -516,7 +620,7 @@ function requireText(value, message) {
 function setSecurityHeaders(response) {
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'no-referrer');
-    response.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https://www.pathofexile.com https://poe.ninja https://web.poecdn.com; style-src 'self'; script-src 'self';");
+    response.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self';");
 }
 
 function sendJson(response, statusCode, payload) {

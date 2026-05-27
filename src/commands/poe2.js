@@ -56,11 +56,12 @@ export async function handlePoe2MarketCommand(interaction) {
             enabledBy: interaction.user.id,
             enabledAt: now,
             updatedAt: now,
+            lastPostedAt: now,
             lastPostedChangeId: snapshot.changeId
         });
 
         await interaction.editReply({
-            content: 'このチャンネルでPoE2相場画像の定期投稿を開始しました。以降は1時間ごとに新しい相場画像を投稿します。'
+            content: `このチャンネルでPoE2相場画像の定期投稿を開始しました。以降は${settings.postIntervalHours}時間ごとに新しい相場画像を投稿します。`
         });
     } catch (error) {
         console.error('PoE2 market command failed:', error);

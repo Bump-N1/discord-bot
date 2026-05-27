@@ -1,7 +1,7 @@
 const token = new URLSearchParams(window.location.search).get('token') || '';
 const state = {
     session: null,
-    category: 'all',
+    category: 'Currency',
     selected: new Set()
 };
 
@@ -11,11 +11,13 @@ const elements = {
     errorText: document.querySelector('#errorText'),
     settingsForm: document.querySelector('#settingsForm'),
     leagueBadge: document.querySelector('#leagueBadge'),
+    postIntervalHours: document.querySelector('#postIntervalHours'),
     categoryTabs: document.querySelector('#categoryTabs'),
     searchInput: document.querySelector('#searchInput'),
     productList: document.querySelector('#productList'),
     selectedCount: document.querySelector('#selectedCount'),
     saveButton: document.querySelector('#saveButton'),
+    historyList: document.querySelector('#historyList'),
     notice: document.querySelector('#notice')
 };
 
@@ -43,9 +45,24 @@ function render() {
     elements.loadingView.classList.add('hidden');
     elements.errorView.classList.add('hidden');
     elements.settingsForm.classList.remove('hidden');
-    elements.leagueBadge.textContent = state.session.league;
+    elements.leagueBadge.textContent = `対象リーグ: ${state.session.league}`;
+    renderPostIntervals();
     renderCategories();
     renderProducts();
+    renderHistory();
+}
+
+function renderPostIntervals() {
+    elements.postIntervalHours.replaceChildren();
+
+    for (let hours = 1; hours <= 24; hours++) {
+        const option = document.createElement('option');
+
+        option.value = String(hours);
+        option.textContent = `${hours}時間ごと`;
+        option.selected = hours === state.session.postIntervalHours;
+        elements.postIntervalHours.append(option);
+    }
 }
 
 function renderCategories() {
@@ -127,6 +144,7 @@ function buildProductOption(product) {
     });
     icon.className = `product-icon${product.iconUrl ? '' : ' fallback'}`;
     icon.alt = '';
+    icon.loading = 'lazy';
     icon.src = product.iconUrl || emptyIconDataUrl();
     icon.addEventListener('error', function() {
         icon.src = emptyIconDataUrl();
@@ -142,6 +160,44 @@ function buildProductOption(product) {
     return option;
 }
 
+function renderHistory() {
+    elements.historyList.replaceChildren();
+
+    if (state.session.history.length === 0) {
+        const empty = document.createElement('p');
+
+        empty.className = 'empty-history';
+        empty.textContent = '保存履歴はありません。';
+        elements.historyList.append(empty);
+        return;
+    }
+
+    for (const entry of state.session.history) {
+        const row = document.createElement('div');
+        const actor = document.createElement('span');
+        const summary = document.createElement('span');
+        const datetime = document.createElement('time');
+        const items = document.createElement('span');
+        const selectedLabels = Array.isArray(entry.selectedLabels) ? entry.selectedLabels : [];
+
+        row.className = 'history-row';
+        actor.className = 'history-actor';
+        actor.textContent = entry.updatedByName || '不明なユーザー';
+        summary.className = 'history-summary';
+        summary.textContent = `表示 ${entry.selectedCount}件 / ${entry.postIntervalHours}時間ごと`;
+        datetime.className = 'history-time';
+        datetime.dateTime = entry.updatedAt;
+        datetime.textContent = formatHistoryDateTime(entry.updatedAt);
+        items.className = 'history-items';
+        items.textContent = selectedLabels.length > 0
+            ? selectedLabels.join(', ')
+            : '表示アイテムなし';
+        items.title = items.textContent;
+        row.append(actor, summary, datetime, items);
+        elements.historyList.append(row);
+    }
+}
+
 async function saveSettings(event) {
     event.preventDefault();
     elements.saveButton.disabled = true;
@@ -151,15 +207,18 @@ async function saveSettings(event) {
             method: 'POST',
             body: {
                 token: token,
-                selectedProductIds: Array.from(state.selected)
+                selectedProductIds: Array.from(state.selected),
+                postIntervalHours: Number(elements.postIntervalHours.value)
             }
         });
         state.selected = new Set(state.session.selectedProductIds);
+        renderPostIntervals();
         renderProducts();
+        renderHistory();
         showNotice(
             state.selected.size === 0
-                ? '表示アイテムを未設定にしました。'
-                : '表示アイテムを保存しました。',
+                ? '表示アイテムを未設定にして、投稿頻度を保存しました。'
+                : '表示アイテムと投稿頻度を保存しました。',
             false
         );
     } catch (error) {
@@ -184,6 +243,23 @@ async function request(url, options = {}) {
     }
 
     return payload;
+}
+
+function formatHistoryDateTime(value) {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    return new Intl.DateTimeFormat('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(date);
 }
 
 function emptyIconDataUrl() {

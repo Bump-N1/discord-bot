@@ -98,6 +98,35 @@ h2 {
     margin-bottom: 18px;
 }
 
+.setting-panel,
+.history-panel {
+    overflow: hidden;
+    margin-bottom: 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+}
+
+.interval-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 16px 18px;
+    color: var(--muted);
+}
+
+select {
+    min-width: 168px;
+    height: 42px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 12px;
+    color: var(--text);
+    background: #11161c;
+    font: inherit;
+}
+
 .category-tabs {
     display: flex;
     flex: 1;
@@ -141,6 +170,11 @@ input[type="search"] {
 }
 
 input:focus {
+    outline: 2px solid #517eea;
+    outline-offset: -1px;
+}
+
+select:focus {
     outline: 2px solid #517eea;
     outline-offset: -1px;
 }
@@ -242,6 +276,63 @@ input:focus {
     padding-top: 18px;
 }
 
+.history-panel {
+    margin-top: 22px;
+    margin-bottom: 0;
+}
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.history-row {
+    display: grid;
+    grid-template-columns: minmax(90px, 1fr) minmax(160px, 1.4fr) auto;
+    align-items: center;
+    gap: 16px;
+    min-height: 50px;
+    padding: 9px 18px;
+    border-bottom: 1px solid #29333e;
+}
+
+.history-row:last-child {
+    border-bottom: 0;
+}
+
+.history-actor {
+    overflow: hidden;
+    color: var(--text);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-summary,
+.history-time,
+.history-items,
+.empty-history {
+    color: var(--muted);
+}
+
+.history-items {
+    grid-column: 1 / -1;
+    overflow: hidden;
+    color: #7f8c9d;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-time {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.empty-history {
+    padding: 22px 18px;
+}
+
 .primary {
     min-height: 44px;
     border: 0;
@@ -314,5 +405,29 @@ input:focus {
 
     .primary {
         width: 100%;
+    }
+
+    .interval-field {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 9px;
+    }
+
+    select {
+        width: 100%;
+    }
+
+    .history-row {
+        grid-template-columns: 1fr auto;
+        gap: 5px 12px;
+    }
+
+    .history-summary {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+
+    .history-items {
+        grid-row: 3;
     }
 }

@@ -3,6 +3,9 @@ const ICON_ROOT = 'https://www.pathofexile.com';
 export const POE2_MARKET_BASE_CURRENCY_ID = 'exalted';
 export const POE2_MARKET_DIVINE_CURRENCY_ID = 'divine';
 export const POE2_MARKET_MAX_PRODUCTS = 12;
+export const POE2_MARKET_DEFAULT_POST_INTERVAL_HOURS = 1;
+export const POE2_MARKET_MIN_POST_INTERVAL_HOURS = 1;
+export const POE2_MARKET_MAX_POST_INTERVAL_HOURS = 24;
 export const POE2_MARKET_CATEGORIES = [
     {
         key: 'Currency',

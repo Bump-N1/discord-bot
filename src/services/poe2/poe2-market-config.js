@@ -1,7 +1,7 @@
 const DEFAULT_MONITOR_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_LOOKBACK_HOURS = 24;
 const DEFAULT_PROVIDER = 'auto';
-const DEFAULT_LEAGUE = 'Standard';
+const DEFAULT_LEAGUE = 'auto';
 const ALLOWED_PROVIDERS = new Set(['poe-ninja', 'official', 'auto']);
 
 export function getPoe2MarketConfig() {
