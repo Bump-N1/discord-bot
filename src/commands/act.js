@@ -40,6 +40,7 @@ import {
     buildActManageUrl,
     isActWebConfigured
 } from '../services/act/act-web-auth.js';
+import { registerEphemeralWebReply } from '../services/act/ephemeral-web-link.js';
 
 const actMessageUpdateQueues = new Map();
 const actCreateDrafts = new Map();
@@ -147,6 +148,7 @@ async function showActWebCreateLink(interaction) {
         ],
         flags: MessageFlags.Ephemeral
     });
+    registerEphemeralWebReply(url, interaction);
 }
 
 async function showActCreateModal(interaction) {
@@ -363,6 +365,7 @@ async function showActWebManageLink(interaction, partyId) {
         ],
         flags: MessageFlags.Ephemeral
     });
+    registerEphemeralWebReply(url, interaction);
 }
 
 async function handleFf14JoinStart(interaction, partyId) {
