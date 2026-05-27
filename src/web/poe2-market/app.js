@@ -45,7 +45,7 @@ function render() {
     elements.loadingView.classList.add('hidden');
     elements.errorView.classList.add('hidden');
     elements.settingsForm.classList.remove('hidden');
-    elements.leagueBadge.textContent = `対象リーグ: ${state.session.league}`;
+    elements.leagueBadge.textContent = state.session.league;
     renderPostIntervals();
     renderCategories();
     renderProducts();
@@ -59,7 +59,7 @@ function renderPostIntervals() {
         const option = document.createElement('option');
 
         option.value = String(hours);
-        option.textContent = `${hours}時間ごと`;
+        option.textContent = String(hours);
         option.selected = hours === state.session.postIntervalHours;
         elements.postIntervalHours.append(option);
     }
@@ -67,11 +67,11 @@ function renderPostIntervals() {
 
 function renderCategories() {
     const categories = [{
-        key: 'all',
-        label: 'すべて'
-    }, {
         key: 'selected',
         label: '選択中'
+    }, {
+        key: 'all',
+        label: 'All'
     }, ...state.session.categories];
 
     elements.categoryTabs.replaceChildren();
@@ -108,11 +108,7 @@ function renderProducts() {
     elements.selectedCount.textContent = `${state.selected.size} / ${state.session.maxProducts}`;
 
     if (products.length === 0) {
-        const empty = document.createElement('p');
-
-        empty.className = 'empty-list';
-        empty.textContent = '該当するアイテムがありません。';
-        elements.productList.append(empty);
+        appendEmptyProductMessage();
         return;
     }
 
@@ -130,17 +126,12 @@ function buildProductOption(product) {
     const disabled = !selected && state.selected.size >= state.session.maxProducts;
 
     option.className = `product-option${disabled ? ' disabled' : ''}`;
+    option.dataset.productId = product.id;
     checkbox.type = 'checkbox';
     checkbox.checked = selected;
     checkbox.disabled = disabled;
     checkbox.addEventListener('change', function() {
-        if (checkbox.checked) {
-            state.selected.add(product.id);
-        } else {
-            state.selected.delete(product.id);
-        }
-
-        renderProducts();
+        updateProductSelection(product.id, checkbox.checked);
     });
     icon.className = `product-icon${product.iconUrl ? '' : ' fallback'}`;
     icon.alt = '';
@@ -158,6 +149,60 @@ function buildProductOption(product) {
     option.append(checkbox, icon, name);
 
     return option;
+}
+
+function updateProductSelection(productId, selected) {
+    if (selected) {
+        state.selected.add(productId);
+    } else {
+        state.selected.delete(productId);
+    }
+
+    if (state.category === 'selected' && !selected) {
+        removeVisibleProductOption(productId);
+        return;
+    }
+
+    refreshVisibleProductOptions();
+}
+
+function refreshVisibleProductOptions() {
+    elements.selectedCount.textContent = `${state.selected.size} / ${state.session.maxProducts}`;
+
+    for (const option of elements.productList.querySelectorAll('.product-option')) {
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        const selected = state.selected.has(option.dataset.productId);
+        const disabled = !selected && state.selected.size >= state.session.maxProducts;
+
+        checkbox.checked = selected;
+        checkbox.disabled = disabled;
+        option.classList.toggle('disabled', disabled);
+    }
+}
+
+function removeVisibleProductOption(productId) {
+    const options = elements.productList.querySelectorAll('.product-option');
+
+    for (const option of options) {
+        if (option.dataset.productId === productId) {
+            option.remove();
+            break;
+        }
+    }
+
+    if (elements.productList.querySelectorAll('.product-option').length === 0) {
+        appendEmptyProductMessage();
+    }
+
+    refreshVisibleProductOptions();
+}
+
+function appendEmptyProductMessage() {
+    const empty = document.createElement('p');
+
+    empty.className = 'empty-list';
+    empty.textContent = '該当するアイテムがありません。';
+    elements.productList.append(empty);
 }
 
 function renderHistory() {
