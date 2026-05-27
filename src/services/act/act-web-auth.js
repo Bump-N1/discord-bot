@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const CREATE_LINK_TTL_MS = 30 * 60 * 1000;
 const MANAGE_LINK_TTL_MS = 24 * 60 * 60 * 1000;
+const MARKET_EDIT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 
 export function isActWebConfigured() {
     return Boolean(getActWebBaseUrl() && getSigningSecret());
@@ -18,22 +19,29 @@ export function getActWebHost() {
 }
 
 export function buildActCreateUrl(payload) {
-    return buildActWebUrl({
+    return buildSignedWebUrl('/act/', {
         ...payload,
         scope: 'create'
     }, CREATE_LINK_TTL_MS);
 }
 
 export function buildActManageUrl(payload) {
-    return buildActWebUrl({
+    return buildSignedWebUrl('/act/', {
         ...payload,
         scope: 'manage'
     }, MANAGE_LINK_TTL_MS);
 }
 
+export function buildPoe2MarketEditUrl(payload) {
+    return buildSignedWebUrl('/poe2-market/', {
+        ...payload,
+        scope: 'poe2-market-edit'
+    }, MARKET_EDIT_LINK_TTL_MS);
+}
+
 export function verifyActWebToken(token, requiredScope = '') {
     if (!isActWebConfigured()) {
-        throw new Error('募集Web画面が設定されていません。');
+        throw new Error('Web画面が設定されていません。');
     }
 
     const parts = String(token || '').split('.');
@@ -68,9 +76,9 @@ export function verifyActWebToken(token, requiredScope = '') {
     return payload;
 }
 
-function buildActWebUrl(payload, ttlMs) {
+function buildSignedWebUrl(pathname, payload, ttlMs) {
     if (!isActWebConfigured()) {
-        throw new Error('募集Web画面が設定されていません。');
+        throw new Error('Web画面が設定されていません。');
     }
 
     const encodedPayload = Buffer.from(JSON.stringify({
@@ -78,7 +86,7 @@ function buildActWebUrl(payload, ttlMs) {
         expiresAt: Date.now() + ttlMs
     })).toString('base64url');
     const token = `${encodedPayload}.${createSignature(encodedPayload)}`;
-    const url = new URL('/act/', getActWebBaseUrl());
+    const url = new URL(pathname, getActWebBaseUrl());
 
     url.searchParams.set('token', token);
 

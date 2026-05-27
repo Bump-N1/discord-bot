@@ -4,6 +4,7 @@ import { getPoe2MarketConfig } from './poe2-market-config.js';
 import { fetchPoe2MarketSnapshot } from './poe2-market-client.js';
 import {
     getAllPoe2MarketSubscriptions,
+    getPoe2MarketSettings,
     markPoe2MarketPosted
 } from './poe2-market-store.js';
 
@@ -27,9 +28,15 @@ export function startPoe2MarketMonitor(client) {
     }, config.monitorIntervalMs);
 }
 
-export async function postCurrentPoe2MarketImage(client, channelId) {
+export async function postCurrentPoe2MarketImage(client, channelId, guildId) {
     const config = getPoe2MarketConfig();
-    const snapshot = await fetchPoe2MarketSnapshot();
+    const settings = await getPoe2MarketSettings(guildId);
+
+    if (settings.selectedProducts.length === 0) {
+        throw new Error('PoE2 market products are not configured.');
+    }
+
+    const snapshot = await fetchPoe2MarketSnapshot(settings.selectedProducts);
     const image = await buildPoe2MarketImage(snapshot, {
         userAgent: config.userAgent
     });
@@ -53,31 +60,66 @@ async function runPoe2MarketMonitorTick(client) {
             return;
         }
 
-        const snapshot = await fetchPoe2MarketSnapshot();
-        const targets = subscriptions.filter(function(subscription) {
-            return subscription.lastPostedChangeId !== snapshot.changeId;
-        });
-
-        if (targets.length === 0) {
-            return;
-        }
-
         const config = getPoe2MarketConfig();
-        const image = await buildPoe2MarketImage(snapshot, {
-            userAgent: config.userAgent
-        });
+        const groups = await buildSubscriptionGroups(subscriptions);
 
-        for (const subscription of targets) {
-            try {
-                await sendSnapshotImage(client, subscription.channelId, image);
-                await markPoe2MarketPosted(subscription.channelId, snapshot.changeId);
-            } catch (error) {
-                console.error(`PoE2 market post failed for channel ${subscription.channelId}:`, error);
+        for (const group of groups.values()) {
+            if (group.settings.selectedProducts.length === 0) {
+                continue;
+            }
+
+            const snapshot = await fetchPoe2MarketSnapshot(group.settings.selectedProducts);
+            const targets = group.subscriptions.filter(function(subscription) {
+                return subscription.lastPostedChangeId !== snapshot.changeId;
+            });
+
+            if (targets.length === 0) {
+                continue;
+            }
+
+            const image = await buildPoe2MarketImage(snapshot, {
+                userAgent: config.userAgent
+            });
+
+            for (const subscription of targets) {
+                try {
+                    await sendSnapshotImage(client, subscription.channelId, image);
+                    await markPoe2MarketPosted(subscription.channelId, snapshot.changeId);
+                } catch (error) {
+                    console.error(`PoE2 market post failed for channel ${subscription.channelId}:`, error);
+                }
             }
         }
     } finally {
         monitorRunning = false;
     }
+}
+
+async function buildSubscriptionGroups(subscriptions) {
+    const groups = new Map();
+    const settingsByGuild = new Map();
+
+    for (const subscription of subscriptions) {
+        const guildId = subscription.guildId || '';
+
+        if (!settingsByGuild.has(guildId)) {
+            settingsByGuild.set(guildId, await getPoe2MarketSettings(guildId));
+        }
+
+        const settings = settingsByGuild.get(guildId);
+        const settingsKey = settings.selectedProducts.map(function(product) {
+            return product.id;
+        }).join('|');
+        const group = groups.get(settingsKey) || {
+            settings: settings,
+            subscriptions: []
+        };
+
+        group.subscriptions.push(subscription);
+        groups.set(settingsKey, group);
+    }
+
+    return groups;
 }
 
 async function sendSnapshotImage(client, channelId, image) {

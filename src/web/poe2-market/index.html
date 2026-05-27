@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PoE2 相場設定 | discord-bot</title>
+    <link rel="icon" type="image/svg+xml" href="/act/favicon.svg">
+    <link rel="stylesheet" href="/poe2-market/app.css">
+</head>
+<body>
+    <header class="app-header">
+        <div>
+            <p class="brand-label">PoE2</p>
+            <h1>相場の表示アイテム</h1>
+        </div>
+        <span id="leagueBadge" class="league-badge"></span>
+    </header>
+
+    <main class="layout">
+        <section id="loadingView" class="state-view">
+            <p>読み込み中...</p>
+        </section>
+
+        <section id="errorView" class="state-view hidden">
+            <h2>開けませんでした</h2>
+            <p id="errorText"></p>
+        </section>
+
+        <form id="settingsForm" class="hidden">
+            <div class="toolbar">
+                <div id="categoryTabs" class="category-tabs" role="tablist" aria-label="カテゴリー"></div>
+                <label class="search-field">
+                    <span class="sr-only">アイテムを検索</span>
+                    <input id="searchInput" type="search" autocomplete="off" placeholder="アイテムを検索">
+                </label>
+            </div>
+
+            <section class="selection-panel" aria-label="表示アイテム">
+                <div class="panel-header">
+                    <h2>表示アイテム</h2>
+                    <span id="selectedCount" class="selected-count"></span>
+                </div>
+                <div id="productList" class="product-list"></div>
+            </section>
+
+            <div class="actions">
+                <button id="saveButton" class="primary" type="submit">設定を保存</button>
+            </div>
+        </form>
+    </main>
+
+    <div id="notice" class="notice hidden" role="status"></div>
+    <script src="/poe2-market/app.js" type="module"></script>
+</body>
+</html>

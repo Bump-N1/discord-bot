@@ -4,28 +4,85 @@ import {
     validatePoe2MarketConfig
 } from './poe2-market-config.js';
 import {
+    createPoe2MarketProduct,
+    getKnownPoe2MarketProducts,
     POE2_MARKET_BASE_CURRENCY_ID,
-    POE2_MARKET_PRODUCTS
+    POE2_MARKET_CATEGORIES,
+    POE2_MARKET_DIVINE_CURRENCY_ID
 } from './poe2-market-definition.js';
 
 const TOKEN_URL = 'https://www.pathofexile.com/oauth/token';
 const API_ROOT = 'https://api.pathofexile.com';
 const POE_NINJA_API_ROOT = 'https://poe.ninja/poe2/api/economy/exchange/current/overview';
+const POE_NINJA_IMAGE_ROOT = 'https://www.pathofexile.com';
 const HOUR_SECONDS = 60 * 60;
+const QUOTE_CURRENCY_IDS = [POE2_MARKET_BASE_CURRENCY_ID, POE2_MARKET_DIVINE_CURRENCY_ID];
 let requestedAccessToken = null;
 
-export async function fetchPoe2MarketSnapshot(now = new Date()) {
+export async function fetchPoe2MarketCatalog() {
     const config = getPoe2MarketConfig();
+
     validatePoe2MarketConfig(config);
 
-    if (!shouldUseOfficialMarketApi(config)) {
-        return await fetchPoeNinjaMarketSnapshot(config, now);
+    const overviews = await fetchPoeNinjaOverviews(config);
+    const productMap = new Map();
+
+    for (const product of getKnownPoe2MarketProducts()) {
+        productMap.set(product.id, product);
     }
 
-    return await fetchOfficialMarketSnapshot(config, now);
+    for (const overview of overviews) {
+        for (const line of overview.data.lines || []) {
+            const id = String(line.id || '').trim();
+
+            if (!id) {
+                continue;
+            }
+
+            const metadata = findPoeNinjaMetadata(overview.data, id);
+            const candidate = createPoe2MarketProduct(id, {
+                category: overview.category,
+                label: getPoeNinjaLabel(line, metadata),
+                iconUrl: normalizePoeNinjaIconUrl(getPoeNinjaIconUrl(line, metadata))
+            });
+            const known = productMap.get(id);
+
+            productMap.set(id, {
+                ...candidate,
+                iconUrl: known?.iconUrl || candidate.iconUrl
+            });
+        }
+    }
+
+    const products = Array.from(productMap.values()).sort(compareCatalogProducts);
+
+    return {
+        league: config.league,
+        categories: POE2_MARKET_CATEGORIES,
+        products: products
+    };
 }
 
-async function fetchOfficialMarketSnapshot(config, now) {
+export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()) {
+    const config = getPoe2MarketConfig();
+
+    validatePoe2MarketConfig(config);
+    requireSelectedProducts(selectedProducts);
+
+    if (!shouldUseOfficialMarketApi(config)) {
+        return await fetchPoeNinjaMarketSnapshot(config, selectedProducts, now);
+    }
+
+    return await fetchOfficialMarketSnapshot(config, selectedProducts, now);
+}
+
+function requireSelectedProducts(selectedProducts) {
+    if (!Array.isArray(selectedProducts) || selectedProducts.length === 0) {
+        throw new Error('PoE2 market products are not configured.');
+    }
+}
+
+async function fetchOfficialMarketSnapshot(config, selectedProducts, now) {
     const accessToken = await getAccessToken(config);
     const latestCompletedHour = getLatestCompletedHour(now);
     const quotesByProductId = new Map();
@@ -46,9 +103,9 @@ async function fetchOfficialMarketSnapshot(config, now) {
             availableHour = changeId;
         }
 
-        collectQuotes(leagueMarkets, changeId, quotesByProductId);
+        collectOfficialQuotes(leagueMarkets, changeId, selectedProducts, quotesByProductId);
 
-        if (hasAllQuotes(quotesByProductId)) {
+        if (hasAllOfficialQuotes(selectedProducts, quotesByProductId)) {
             break;
         }
     }
@@ -62,36 +119,23 @@ async function fetchOfficialMarketSnapshot(config, now) {
         league: config.league,
         changeId: String(availableHour),
         completedHour: availableHour,
-        products: POE2_MARKET_PRODUCTS.map(function(product) {
-            if (product.base) {
-                return {
-                    ...product,
-                    lowestPrice: 1,
-                    highestPrice: 1,
-                    volume: null,
-                    quoteChangeId: availableHour
-                };
-            }
-
+        products: selectedProducts.map(function(product) {
             return {
                 ...product,
-                ...(quotesByProductId.get(product.id) || {
-                    lowestPrice: null,
-                    highestPrice: null,
-                    volume: null,
-                    quoteChangeId: null
-                })
+                prices: buildOfficialProductPrices(product, quotesByProductId, availableHour)
             };
         })
     };
 }
 
-async function fetchPoeNinjaMarketSnapshot(config, now) {
-    const [currencyOverview, gemOverview] = await Promise.all([
-        fetchPoeNinjaOverview(config, 'Currency'),
-        fetchPoeNinjaOverview(config, 'UncutGems')
-    ]);
-    const overviews = [currencyOverview, gemOverview];
+async function fetchPoeNinjaMarketSnapshot(config, selectedProducts, now) {
+    const requiredCategories = Array.from(new Set([
+        'Currency',
+        ...selectedProducts.map(function(product) {
+            return product.category;
+        })
+    ]));
+    const overviews = await fetchPoeNinjaOverviews(config, requiredCategories);
     const hourlyBucket = getCurrentHour(now);
 
     return {
@@ -100,58 +144,94 @@ async function fetchPoeNinjaMarketSnapshot(config, now) {
         changeId: `poe-ninja:${hourlyBucket}`,
         completedHour: hourlyBucket,
         capturedAt: now.toISOString(),
-        products: POE2_MARKET_PRODUCTS.map(function(product) {
-            if (product.base) {
-                return {
-                    ...product,
-                    lowestPrice: 1,
-                    highestPrice: 1,
-                    volume: null,
-                    quoteChangeId: hourlyBucket
-                };
-            }
-
-            const overview = overviews.find(function(candidate) {
-                return (candidate.lines || []).some(function(entry) {
-                    return entry.id === product.id;
-                });
-            });
-            const line = (overview?.lines || []).find(function(entry) {
-                return entry.id === product.id;
-            });
-            const primaryValue = Number(line?.primaryValue);
-            const exaltedPerPrimary = getPoeNinjaExaltedPerPrimary(overview?.core);
-
-            if (!Number.isFinite(primaryValue)
-                || primaryValue <= 0
-                || !Number.isFinite(exaltedPerPrimary)
-                || exaltedPerPrimary <= 0) {
-                return {
-                    ...product,
-                    lowestPrice: null,
-                    highestPrice: null,
-                    volume: null,
-                    quoteChangeId: null
-                };
-            }
-
+        products: selectedProducts.map(function(product) {
             return {
                 ...product,
-                lowestPrice: primaryValue * exaltedPerPrimary,
-                highestPrice: primaryValue * exaltedPerPrimary,
-                volume: calculatePoeNinjaVolume(line),
-                quoteChangeId: hourlyBucket
+                prices: buildPoeNinjaProductPrices(product, overviews, hourlyBucket)
             };
         })
     };
 }
 
-function getPoeNinjaExaltedPerPrimary(core) {
-    if (core?.primary === POE2_MARKET_BASE_CURRENCY_ID) {
+async function fetchPoeNinjaOverviews(config, categoryKeys = POE2_MARKET_CATEGORIES.map(function(category) {
+    return category.key;
+})) {
+    return await Promise.all(categoryKeys.map(async function(categoryKey) {
+        return {
+            category: categoryKey,
+            data: await fetchPoeNinjaOverview(config, categoryKey)
+        };
+    }));
+}
+
+function buildPoeNinjaProductPrices(product, overviews, quoteChangeId) {
+    const productOverview = findPoeNinjaProductOverview(overviews, product.id);
+    const referenceOverview = productOverview || overviews.find(function(overview) {
+        return overview.category === 'Currency';
+    });
+    const line = (productOverview?.data.lines || []).find(function(candidate) {
+        return candidate.id === product.id;
+    });
+    const valueInPrimary = getPoeNinjaValueInPrimary(product.id, line, referenceOverview?.data.core);
+
+    return Object.fromEntries(QUOTE_CURRENCY_IDS.map(function(currencyId) {
+        const price = convertPoeNinjaPrice(valueInPrimary, product.id, currencyId, referenceOverview?.data.core);
+
+        return [currencyId, createPrice(price, quoteChangeId)];
+    }));
+}
+
+function findPoeNinjaProductOverview(overviews, productId) {
+    return overviews.find(function(overview) {
+        return (overview.data.lines || []).some(function(line) {
+            return line.id === productId;
+        }) || overview.data.core?.primary === productId
+            || Number.isFinite(Number(overview.data.core?.rates?.[productId]));
+    }) || null;
+}
+
+function getPoeNinjaValueInPrimary(productId, line, core) {
+    if (!core) {
+        return null;
+    }
+
+    if (productId === core.primary) {
         return 1;
     }
 
-    return Number(core?.rates?.[POE2_MARKET_BASE_CURRENCY_ID]);
+    const primaryValue = Number(line?.primaryValue);
+
+    if (Number.isFinite(primaryValue) && primaryValue > 0) {
+        return primaryValue;
+    }
+
+    const productPerPrimary = Number(core.rates?.[productId]);
+
+    if (Number.isFinite(productPerPrimary) && productPerPrimary > 0) {
+        return 1 / productPerPrimary;
+    }
+
+    return null;
+}
+
+function convertPoeNinjaPrice(valueInPrimary, productId, currencyId, core) {
+    if (productId === currencyId) {
+        return 1;
+    }
+
+    if (!Number.isFinite(valueInPrimary) || valueInPrimary <= 0 || !core) {
+        return null;
+    }
+
+    if (core.primary === currencyId) {
+        return valueInPrimary;
+    }
+
+    const targetPerPrimary = Number(core.rates?.[currencyId]);
+
+    return Number.isFinite(targetPerPrimary) && targetPerPrimary > 0
+        ? valueInPrimary * targetPerPrimary
+        : null;
 }
 
 async function fetchPoeNinjaOverview(config, type) {
@@ -173,15 +253,76 @@ async function fetchPoeNinjaOverview(config, type) {
     return await response.json();
 }
 
-function calculatePoeNinjaVolume(line) {
-    const value = Number(line?.volumePrimaryValue);
-    const price = Number(line?.primaryValue);
+function findPoeNinjaMetadata(overview, id) {
+    const candidates = [
+        ...(overview.items || []),
+        ...(overview.core?.items || [])
+    ];
 
-    if (!Number.isFinite(value) || !Number.isFinite(price) || price <= 0) {
-        return null;
+    return candidates.find(function(item) {
+        return String(item.id || item.detailsId || '') === id;
+    }) || {};
+}
+
+function getPoeNinjaLabel(line, metadata) {
+    return line.name
+        || line.currencyTypeName
+        || line.label
+        || metadata.name
+        || metadata.label
+        || '';
+}
+
+function getPoeNinjaIconUrl(line, metadata) {
+    return line.icon
+        || line.image
+        || metadata.icon
+        || metadata.image
+        || '';
+}
+
+function normalizePoeNinjaIconUrl(value) {
+    const iconUrl = String(value || '').trim();
+
+    if (!iconUrl) {
+        return '';
     }
 
-    return Math.round(value / price);
+    const url = new URL(iconUrl, POE_NINJA_IMAGE_ROOT);
+    const allowedHosts = [
+        'www.pathofexile.com',
+        'pathofexile.com',
+        'poe.ninja',
+        'www.poe.ninja',
+        'web.poecdn.com'
+    ];
+
+    return url.protocol === 'https:' && allowedHosts.includes(url.hostname)
+        ? url.toString()
+        : '';
+}
+
+function compareCatalogProducts(left, right) {
+    const leftCategory = POE2_MARKET_CATEGORIES.findIndex(function(category) {
+        return category.key === left.category;
+    });
+    const rightCategory = POE2_MARKET_CATEGORIES.findIndex(function(category) {
+        return category.key === right.category;
+    });
+
+    if (leftCategory !== rightCategory) {
+        return leftCategory - rightCategory;
+    }
+
+    return left.label.localeCompare(right.label, 'en');
+}
+
+function createPrice(value, quoteChangeId) {
+    return {
+        lowestPrice: Number.isFinite(value) && value > 0 ? value : null,
+        highestPrice: Number.isFinite(value) && value > 0 ? value : null,
+        quoteChangeId: Number.isFinite(value) && value > 0 ? quoteChangeId : null
+    };
 }
 
 async function getAccessToken(config) {
@@ -243,38 +384,55 @@ async function fetchExchangeDigest(config, accessToken, changeId) {
     return await response.json();
 }
 
-function collectQuotes(markets, changeId, quotesByProductId) {
-    for (const product of POE2_MARKET_PRODUCTS) {
-        if (product.base || quotesByProductId.has(product.id)) {
-            continue;
+function collectOfficialQuotes(markets, changeId, selectedProducts, quotesByProductId) {
+    for (const product of selectedProducts) {
+        const quotes = quotesByProductId.get(product.id) || {};
+
+        for (const currencyId of QUOTE_CURRENCY_IDS) {
+            if (product.id === currencyId || quotes[currencyId]) {
+                continue;
+            }
+
+            const market = markets.find(function(entry) {
+                return isMarketPair(entry.market_id, product.id, currencyId);
+            });
+
+            if (!market) {
+                continue;
+            }
+
+            const prices = [
+                calculatePriceInCurrency(market.lowest_ratio, product.id, currencyId),
+                calculatePriceInCurrency(market.highest_ratio, product.id, currencyId)
+            ].filter(function(value) {
+                return Number.isFinite(value);
+            });
+
+            if (prices.length === 0) {
+                continue;
+            }
+
+            quotes[currencyId] = {
+                lowestPrice: Math.min(...prices),
+                highestPrice: Math.max(...prices),
+                quoteChangeId: changeId
+            };
         }
 
-        const market = markets.find(function(entry) {
-            return isMarketPair(entry.market_id, product.id, POE2_MARKET_BASE_CURRENCY_ID);
-        });
-
-        if (!market) {
-            continue;
-        }
-
-        const prices = [
-            calculatePriceInExalted(market.lowest_ratio, product.id),
-            calculatePriceInExalted(market.highest_ratio, product.id)
-        ].filter(function(value) {
-            return Number.isFinite(value);
-        });
-
-        if (prices.length === 0) {
-            continue;
-        }
-
-        quotesByProductId.set(product.id, {
-            lowestPrice: Math.min(...prices),
-            highestPrice: Math.max(...prices),
-            volume: Number(market.volume_traded?.[product.id] || 0),
-            quoteChangeId: changeId
-        });
+        quotesByProductId.set(product.id, quotes);
     }
+}
+
+function buildOfficialProductPrices(product, quotesByProductId, quoteChangeId) {
+    const quotes = quotesByProductId.get(product.id) || {};
+
+    return Object.fromEntries(QUOTE_CURRENCY_IDS.map(function(currencyId) {
+        if (product.id === currencyId) {
+            return [currencyId, createPrice(1, quoteChangeId)];
+        }
+
+        return [currencyId, quotes[currencyId] || createPrice(null, null)];
+    }));
 }
 
 function isMarketPair(marketId, productId, currencyId) {
@@ -283,25 +441,25 @@ function isMarketPair(marketId, productId, currencyId) {
     return ids.includes(productId) && ids.includes(currencyId);
 }
 
-function calculatePriceInExalted(ratio, productId) {
+function calculatePriceInCurrency(ratio, productId, currencyId) {
     const productAmount = Number(ratio?.[productId]);
-    const exaltedAmount = Number(ratio?.[POE2_MARKET_BASE_CURRENCY_ID]);
+    const currencyAmount = Number(ratio?.[currencyId]);
 
-    if (!Number.isFinite(productAmount) || !Number.isFinite(exaltedAmount) || productAmount <= 0) {
+    if (!Number.isFinite(productAmount) || !Number.isFinite(currencyAmount) || productAmount <= 0) {
         return null;
     }
 
-    return exaltedAmount / productAmount;
+    return currencyAmount / productAmount;
 }
 
-function hasAllQuotes(quotesByProductId) {
-    return POE2_MARKET_PRODUCTS
-        .filter(function(product) {
-            return !product.base;
-        })
-        .every(function(product) {
-            return quotesByProductId.has(product.id);
+function hasAllOfficialQuotes(selectedProducts, quotesByProductId) {
+    return selectedProducts.every(function(product) {
+        const quotes = quotesByProductId.get(product.id) || {};
+
+        return QUOTE_CURRENCY_IDS.every(function(currencyId) {
+            return product.id === currencyId || Boolean(quotes[currencyId]);
         });
+    });
 }
 
 function getLatestCompletedHour(now) {
