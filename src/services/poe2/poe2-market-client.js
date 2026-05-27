@@ -14,15 +14,19 @@ import {
 const TOKEN_URL = 'https://www.pathofexile.com/oauth/token';
 const API_ROOT = 'https://api.pathofexile.com';
 const POE_NINJA_API_ROOT = 'https://poe.ninja/poe2/api/economy/exchange/current/overview';
+const POE_NINJA_INDEX_STATE_URL = 'https://poe.ninja/poe2/api/data/index-state?';
 const POE_NINJA_IMAGE_ROOT = 'https://www.pathofexile.com';
 const HOUR_SECONDS = 60 * 60;
 const CATALOG_CACHE_MS = 5 * 60 * 1000;
+const LEAGUE_CACHE_MS = 5 * 60 * 1000;
+const AUTO_LEAGUE = 'auto';
 const QUOTE_CURRENCY_IDS = [POE2_MARKET_BASE_CURRENCY_ID, POE2_MARKET_DIVINE_CURRENCY_ID];
 let requestedAccessToken = null;
 let cachedCatalog = null;
+let cachedAutoLeague = null;
 
 export async function fetchPoe2MarketCatalog() {
-    const config = getPoe2MarketConfig();
+    const config = await resolvePoe2MarketConfig(getPoe2MarketConfig());
 
     validatePoe2MarketConfig(config);
 
@@ -80,7 +84,7 @@ export async function fetchPoe2MarketCatalog() {
 }
 
 export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()) {
-    const config = getPoe2MarketConfig();
+    const config = await resolvePoe2MarketConfig(getPoe2MarketConfig());
 
     validatePoe2MarketConfig(config);
     requireSelectedProducts(selectedProducts);
@@ -90,6 +94,64 @@ export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()
     }
 
     return await fetchOfficialMarketSnapshot(config, selectedProducts, now);
+}
+
+async function resolvePoe2MarketConfig(config) {
+    validatePoe2MarketConfig(config);
+
+    if (config.league.toLowerCase() !== AUTO_LEAGUE) {
+        return config;
+    }
+
+    return {
+        ...config,
+        league: await fetchAutomaticLeague(config)
+    };
+}
+
+async function fetchAutomaticLeague(config) {
+    if (cachedAutoLeague && cachedAutoLeague.expiresAt > Date.now()) {
+        return cachedAutoLeague.league;
+    }
+
+    const response = await fetch(POE_NINJA_INDEX_STATE_URL, {
+        headers: {
+            'User-Agent': config.userAgent,
+            Accept: 'application/json'
+        }
+    });
+
+    if (!response.ok) {
+        throw await buildResponseError('poe.ninja league request failed', response);
+    }
+
+    const payload = await response.json();
+    const activeLeague = findLatestTradeChallengeLeague(payload.economyLeagues);
+    const previousLeague = findLatestTradeChallengeLeague(payload.oldEconomyLeagues);
+    const league = activeLeague || previousLeague;
+
+    if (!league) {
+        throw new Error('Current PoE2 challenge league was not found.');
+    }
+
+    cachedAutoLeague = {
+        league: league,
+        expiresAt: Date.now() + LEAGUE_CACHE_MS
+    };
+
+    return league;
+}
+
+function findLatestTradeChallengeLeague(leagues) {
+    const permanentLeagues = new Set(['Standard', 'Hardcore']);
+
+    return (Array.isArray(leagues) ? leagues : []).find(function(league) {
+        return league
+            && league.name
+            && !league.hardcore
+            && league.indexed !== false
+            && !permanentLeagues.has(league.name);
+    })?.name || '';
 }
 
 function requireSelectedProducts(selectedProducts) {

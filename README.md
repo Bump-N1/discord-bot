@@ -127,7 +127,9 @@ PoE2相場画像に表示するアイテムをWeb画面で設定する。
 暫定取得を固定する場合は `POE2_MARKET_PROVIDER=poe-ninja` を指定する。
 公式Currency Exchange APIを使用する場合は `POE2_MARKET_PROVIDER=official` とし、`service:cxapi` が利用できる認証情報を設定する。
 公式利用時は `POE2_ACCESS_TOKEN` を設定するか、`POE2_CLIENT_ID` と `POE2_CLIENT_SECRET` を設定してBot側でトークンを取得する。
-`POE2_LEAGUE` には取得対象リーグを設定する。未指定の場合、設定画面に表示される `Standard`（常設リーグ）の相場を取得する。
+`POE2_LEAGUE=auto` または未指定の場合は、現在開催中のPoE2新リーグを自動で取得対象にする。
+新リーグ切替前の空白期間は直前の新リーグの相場を参照し、新リーグの相場掲載開始後に自動で切り替わる。
+特定リーグに固定する場合のみ、`POE2_LEAGUE` にリーグ名を指定する。
 `POE2_USER_AGENT` にはアプリ名と連絡可能なPoEアカウント名を設定する。
 
 ### 戦績確認
