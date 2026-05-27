@@ -90,7 +90,8 @@ export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()
 
     validatePoe2MarketConfig(config);
     requireSelectedProducts(selectedProducts);
-    const localizedProducts = await localizePoe2MarketProducts(selectedProducts, config.userAgent);
+    const localizedProducts = (await localizePoe2MarketProducts(selectedProducts, config.userAgent))
+        .sort(compareCatalogProducts);
 
     if (!shouldUseOfficialMarketApi(config)) {
         return await fetchPoeNinjaMarketSnapshot(config, localizedProducts, now);
