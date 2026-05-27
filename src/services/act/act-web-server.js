@@ -32,8 +32,15 @@ import {
     isActWebConfigured,
     verifyActWebToken
 } from './act-web-auth.js';
+import { fetchPoe2MarketCatalog } from '../poe2/poe2-market-client.js';
+import { POE2_MARKET_MAX_PRODUCTS } from '../poe2/poe2-market-definition.js';
+import {
+    getPoe2MarketSettings,
+    savePoe2MarketSettings
+} from '../poe2/poe2-market-store.js';
 
 const WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'act');
+const POE2_WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'poe2-market');
 const ASSET_ROOT = path.resolve(process.cwd(), 'assets');
 const completedCreateTokens = new Set();
 
@@ -78,6 +85,16 @@ async function handleRequest(client, request, response) {
         return;
     }
 
+    if (request.method === 'GET' && (url.pathname === '/poe2-market' || url.pathname === '/poe2-market/')) {
+        await sendFile(response, path.join(POE2_WEB_ROOT, 'index.html'), 'text/html; charset=utf-8');
+        return;
+    }
+
+    if (request.method === 'GET' && url.pathname.startsWith('/poe2-market/')) {
+        await servePoe2MarketStaticFile(url.pathname, response);
+        return;
+    }
+
     if (request.method === 'GET' && url.pathname.startsWith('/assets/')) {
         await serveAssetFile(url.pathname, response);
         return;
@@ -85,6 +102,16 @@ async function handleRequest(client, request, response) {
 
     if (request.method === 'GET' && url.pathname === '/api/act/session') {
         await handleSessionRequest(url, response);
+        return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/poe2-market/session') {
+        await handlePoe2MarketSessionRequest(url, response);
+        return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/poe2-market/settings') {
+        await handlePoe2MarketSettingsRequest(request, response);
         return;
     }
 
@@ -103,6 +130,72 @@ async function handleRequest(client, request, response) {
     sendJson(response, 404, {
         error: 'ページが見つかりません。'
     });
+}
+
+async function handlePoe2MarketSessionRequest(url, response) {
+    try {
+        const payload = verifyActWebToken(url.searchParams.get('token'), 'poe2-market-edit');
+        const catalog = await fetchPoe2MarketCatalog();
+        const settings = await getPoe2MarketSettings(payload.guildId);
+
+        sendJson(response, 200, buildPoe2MarketSession(payload, catalog, settings));
+    } catch (error) {
+        sendJson(response, 400, {
+            error: error.message
+        });
+    }
+}
+
+async function handlePoe2MarketSettingsRequest(request, response) {
+    try {
+        const body = await readJsonBody(request);
+        const payload = verifyActWebToken(body.token, 'poe2-market-edit');
+        const selectedProductIds = Array.from(new Set(
+            Array.isArray(body.selectedProductIds)
+                ? body.selectedProductIds.map(String)
+                : []
+        ));
+
+        if (selectedProductIds.length > POE2_MARKET_MAX_PRODUCTS) {
+            throw new Error(`表示できるアイテムは${POE2_MARKET_MAX_PRODUCTS}件までです。`);
+        }
+
+        const catalog = await fetchPoe2MarketCatalog();
+        const productById = new Map(catalog.products.map(function(product) {
+            return [product.id, product];
+        }));
+        const selectedProducts = selectedProductIds.map(function(productId) {
+            return productById.get(productId);
+        });
+
+        if (selectedProducts.some(function(product) {
+            return !product;
+        })) {
+            throw new Error('選択したアイテムの一部を取得できませんでした。画面を更新してください。');
+        }
+
+        const settings = await savePoe2MarketSettings(payload.guildId, selectedProducts, payload.userId);
+
+        sendJson(response, 200, buildPoe2MarketSession(payload, catalog, settings));
+    } catch (error) {
+        sendJson(response, 400, {
+            error: error.message
+        });
+    }
+}
+
+function buildPoe2MarketSession(payload, catalog, settings) {
+    return {
+        actorName: payload.displayName,
+        league: catalog.league,
+        maxProducts: POE2_MARKET_MAX_PRODUCTS,
+        categories: catalog.categories,
+        products: catalog.products,
+        selectedProductIds: settings.selectedProducts.map(function(product) {
+            return product.id;
+        }),
+        configured: Boolean(settings.configured)
+    };
 }
 
 async function handleSessionRequest(url, response) {
@@ -349,6 +442,23 @@ async function serveWebStaticFile(urlPath, response) {
     await sendFile(response, path.join(WEB_ROOT, fileName), safeFileNames[fileName]);
 }
 
+async function servePoe2MarketStaticFile(urlPath, response) {
+    const fileName = urlPath.slice('/poe2-market/'.length);
+    const safeFileNames = {
+        'app.css': 'text/css; charset=utf-8',
+        'app.js': 'text/javascript; charset=utf-8'
+    };
+
+    if (!safeFileNames[fileName]) {
+        sendJson(response, 404, {
+            error: 'ページが見つかりません。'
+        });
+        return;
+    }
+
+    await sendFile(response, path.join(POE2_WEB_ROOT, fileName), safeFileNames[fileName]);
+}
+
 async function serveAssetFile(urlPath, response) {
     const relativePath = urlPath.slice('/assets/'.length);
     const absolutePath = path.resolve(ASSET_ROOT, relativePath);
@@ -406,7 +516,7 @@ function requireText(value, message) {
 function setSecurityHeaders(response) {
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'no-referrer');
-    response.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self';");
+    response.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https://www.pathofexile.com https://poe.ninja https://web.poecdn.com; style-src 'self'; script-src 'self';");
 }
 
 function sendJson(response, statusCode, payload) {

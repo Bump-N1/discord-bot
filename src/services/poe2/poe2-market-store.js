@@ -17,6 +17,39 @@ export async function getAllPoe2MarketSubscriptions() {
     return Object.values(state.subscriptions);
 }
 
+export async function getPoe2MarketSettings(guildId) {
+    const state = await readState();
+    const settings = state.settings[guildId];
+
+    if (settings && Array.isArray(settings.selectedProducts)) {
+        return settings;
+    }
+
+    return {
+        guildId: guildId,
+        selectedProducts: [],
+        configured: false
+    };
+}
+
+export async function savePoe2MarketSettings(guildId, selectedProducts, updatedBy) {
+    return await withStoreLock(async function() {
+        const state = await readState();
+        const settings = {
+            guildId: guildId,
+            selectedProducts: selectedProducts,
+            updatedBy: updatedBy,
+            updatedAt: new Date().toISOString(),
+            configured: true
+        };
+
+        state.settings[guildId] = settings;
+        await writeState(state);
+
+        return settings;
+    });
+}
+
 export async function savePoe2MarketSubscription(subscription) {
     return await withStoreLock(async function() {
         const state = await readState();
@@ -70,12 +103,14 @@ async function readState() {
         const state = JSON.parse(contents);
 
         return {
-            subscriptions: state.subscriptions || {}
+            subscriptions: state.subscriptions || {},
+            settings: state.settings || {}
         };
     } catch (error) {
         if (error.code === 'ENOENT') {
             return {
-                subscriptions: {}
+                subscriptions: {},
+                settings: {}
             };
         }
 

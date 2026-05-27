@@ -1,38 +1,102 @@
 const ICON_ROOT = 'https://www.pathofexile.com';
 
-export const POE2_MARKET_PRODUCTS = [
+export const POE2_MARKET_BASE_CURRENCY_ID = 'exalted';
+export const POE2_MARKET_DIVINE_CURRENCY_ID = 'divine';
+export const POE2_MARKET_MAX_PRODUCTS = 12;
+export const POE2_MARKET_CATEGORIES = [
     {
-        id: 'exalted',
-        label: '高貴のオーブ',
-        base: true,
-        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lBZGRNb2RUb1JhcmUiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/ad7c366789/CurrencyAddModToRare.png`
+        key: 'Currency',
+        label: 'Currency'
     },
     {
-        id: 'chaos',
-        label: 'カオスオーブ',
-        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lSZXJvbGxSYXJlIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/c0ca392a78/CurrencyRerollRare.png`
+        key: 'UncutGems',
+        label: 'Uncut Gems'
     },
     {
-        id: 'annul',
-        label: '消去のオーブ',
-        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQW5udWxsT3JiIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/2daba8ccca/AnnullOrb.png`
+        key: 'Fragments',
+        label: 'Fragments'
     },
     {
-        id: 'divine',
-        label: '神のオーブ',
-        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lNb2RWYWx1ZXMiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/2986e220b3/CurrencyModValues.png`
+        key: 'Runes',
+        label: 'Runes'
     },
     {
-        id: 'uncut-skill-gem-20',
-        label: 'スキルジェム Lv20',
-        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvR2Vtcy9VbmN1dFNraWxsR2VtIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/97f0ceba15/UncutSkillGem.png`
+        key: 'Essences',
+        label: 'Essences'
     },
     {
-        id: 'uncut-spirit-gem-20',
-        label: 'スピリットジェム Lv20',
-        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvR2Vtcy9VbmN1dFNraWxsR2VtQnVmZiIsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/ab25e9aa3b/UncutSkillGemBuff.png`
+        key: 'Omens',
+        label: 'Omens'
     }
 ];
 
-export const POE2_MARKET_BASE_CURRENCY_ID = 'exalted';
+const KNOWN_PRODUCTS = {
+    exalted: {
+        label: 'Exalted Orb',
+        category: 'Currency',
+        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lBZGRNb2RUb1JhcmUiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/ad7c366789/CurrencyAddModToRare.png`
+    },
+    chaos: {
+        label: 'Chaos Orb',
+        category: 'Currency',
+        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lSZXJvbGxSYXJlIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/c0ca392a78/CurrencyRerollRare.png`
+    },
+    annul: {
+        label: 'Orb of Annulment',
+        category: 'Currency',
+        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQW5udWxsT3JiIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/2daba8ccca/AnnullOrb.png`
+    },
+    divine: {
+        label: 'Divine Orb',
+        category: 'Currency',
+        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lNb2RWYWx1ZXMiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/2986e220b3/CurrencyModValues.png`
+    },
+    'uncut-skill-gem-20': {
+        label: 'Uncut Skill Gem Lv20',
+        category: 'UncutGems',
+        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvR2Vtcy9VbmN1dFNraWxsR2VtIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/97f0ceba15/UncutSkillGem.png`
+    },
+    'uncut-spirit-gem-20': {
+        label: 'Uncut Spirit Gem Lv20',
+        category: 'UncutGems',
+        iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvR2Vtcy9VbmN1dFNraWxsR2VtQnVmZiIsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/ab25e9aa3b/UncutSkillGemBuff.png`
+    }
+};
 
+export function getKnownPoe2MarketProducts() {
+    return Object.keys(KNOWN_PRODUCTS).map(function(id) {
+        return createPoe2MarketProduct(id);
+    });
+}
+
+export function createPoe2MarketProduct(id, fields = {}) {
+    const known = KNOWN_PRODUCTS[id] || {};
+
+    return {
+        id: String(id),
+        label: String(fields.label || known.label || formatProductId(id)),
+        category: String(fields.category || known.category || 'Currency'),
+        iconUrl: String(fields.iconUrl || known.iconUrl || '')
+    };
+}
+
+export function getQuoteCurrencyProducts() {
+    return [
+        createPoe2MarketProduct(POE2_MARKET_BASE_CURRENCY_ID),
+        createPoe2MarketProduct(POE2_MARKET_DIVINE_CURRENCY_ID)
+    ];
+}
+
+function formatProductId(id) {
+    return String(id || '')
+        .split('-')
+        .filter(Boolean)
+        .map(function(part) {
+            if (/^lv\d+$/iu.test(part)) {
+                return part.replace(/^lv/iu, 'Lv');
+            }
+
+            return `${part.charAt(0).toUpperCase()}${part.slice(1)}`;
+        })
+        .join(' ');
+}
