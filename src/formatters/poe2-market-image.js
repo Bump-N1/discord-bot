@@ -13,18 +13,19 @@ const JST_TIME_ZONE = 'Asia/Tokyo';
 const iconCache = new Map();
 
 export async function buildPoe2MarketImage(snapshot, options = {}) {
-    const quoteCurrencyIcons = await Promise.all(getQuoteCurrencyProducts().map(function(product) {
+    const quoteCurrencies = getQuoteCurrencyProducts();
+    const quoteCurrencyIcons = await Promise.all(quoteCurrencies.map(function(product) {
         return loadIconDataUrl(product.iconUrl, options.userAgent);
     }));
     const productIcons = await Promise.all(snapshot.products.map(function(product) {
         return loadIconDataUrl(product.iconUrl, options.userAgent);
     }));
-    const svg = buildImageSvg(snapshot, productIcons, quoteCurrencyIcons);
+    const svg = buildImageSvg(snapshot, productIcons, quoteCurrencyIcons, quoteCurrencies);
 
     return await sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-function buildImageSvg(snapshot, productIcons, quoteCurrencyIcons) {
+function buildImageSvg(snapshot, productIcons, quoteCurrencyIcons, quoteCurrencies) {
     const imageHeight = HEADER_HEIGHT + (snapshot.products.length * ROW_HEIGHT) + FOOTER_HEIGHT;
     const panelHeight = imageHeight - 36;
     const sourceText = escapeXml(buildSnapshotSourceText(snapshot));
@@ -55,8 +56,8 @@ function buildImageSvg(snapshot, productIcons, quoteCurrencyIcons) {
     <text x="60" y="68" fill="#f5f7fb" font-size="31" font-weight="700" font-family="${fontFamily()}">PoE2 相場</text>
     <text x="60" y="98" fill="#9ca9bc" font-size="17" font-family="${fontFamily()}">${sourceText}</text>
     <text x="${itemHeaderX}" y="158" text-anchor="middle" fill="#8997aa" font-size="16" font-weight="700" font-family="${fontFamily()}">アイテム</text>
-    ${buildMarketHeader('相場', quoteCurrencyIcons[0], exaltedHeaderX, 'Exalted')}
-    ${buildMarketHeader('相場', quoteCurrencyIcons[1], divineHeaderX, 'Divine')}
+    ${buildMarketHeader('相場', quoteCurrencyIcons[0], exaltedHeaderX, quoteCurrencies[0].label)}
+    ${buildMarketHeader('相場', quoteCurrencyIcons[1], divineHeaderX, quoteCurrencies[1].label)}
     ${rows}
     <text x="40" y="${imageHeight - 24}" fill="#687488" font-size="14" font-family="${fontFamily()}">${footerText}</text>
 </svg>`;

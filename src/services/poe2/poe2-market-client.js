@@ -10,6 +10,7 @@ import {
     POE2_MARKET_CATEGORIES,
     POE2_MARKET_DIVINE_CURRENCY_ID
 } from './poe2-market-definition.js';
+import { localizePoe2MarketProducts } from './poe2-market-localization.js';
 
 const TOKEN_URL = 'https://www.pathofexile.com/oauth/token';
 const API_ROOT = 'https://api.pathofexile.com';
@@ -66,7 +67,8 @@ export async function fetchPoe2MarketCatalog() {
         }
     }
 
-    const products = Array.from(productMap.values()).sort(compareCatalogProducts);
+    const products = (await localizePoe2MarketProducts(Array.from(productMap.values()), config.userAgent))
+        .sort(compareCatalogProducts);
 
     const catalog = {
         league: config.league,
@@ -88,12 +90,13 @@ export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()
 
     validatePoe2MarketConfig(config);
     requireSelectedProducts(selectedProducts);
+    const localizedProducts = await localizePoe2MarketProducts(selectedProducts, config.userAgent);
 
     if (!shouldUseOfficialMarketApi(config)) {
-        return await fetchPoeNinjaMarketSnapshot(config, selectedProducts, now);
+        return await fetchPoeNinjaMarketSnapshot(config, localizedProducts, now);
     }
 
-    return await fetchOfficialMarketSnapshot(config, selectedProducts, now);
+    return await fetchOfficialMarketSnapshot(config, localizedProducts, now);
 }
 
 async function resolvePoe2MarketConfig(config) {
@@ -392,7 +395,7 @@ function compareCatalogProducts(left, right) {
         return leftCategory - rightCategory;
     }
 
-    return left.label.localeCompare(right.label, 'en');
+    return left.label.localeCompare(right.label, 'ja-JP');
 }
 
 function createPrice(value, quoteChangeId) {

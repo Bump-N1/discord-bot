@@ -35,6 +35,7 @@ import {
 import { dismissEphemeralWebReply } from './ephemeral-web-link.js';
 import { fetchPoe2MarketCatalog } from '../poe2/poe2-market-client.js';
 import { getPoe2MarketConfig } from '../poe2/poe2-market-config.js';
+import { localizePoe2MarketLabelTexts } from '../poe2/poe2-market-localization.js';
 import {
     POE2_MARKET_MAX_POST_INTERVAL_HOURS,
     POE2_MARKET_MAX_PRODUCTS,
@@ -171,7 +172,7 @@ async function handlePoe2MarketSessionRequest(url, response) {
         const catalog = await fetchPoe2MarketCatalog();
         const settings = await getPoe2MarketSettings(payload.guildId);
 
-        sendJson(response, 200, buildPoe2MarketSession(payload, catalog, settings, url.searchParams.get('token')));
+        sendJson(response, 200, await buildPoe2MarketSession(payload, catalog, settings, url.searchParams.get('token')));
     } catch (error) {
         sendJson(response, 400, {
             error: error.message
@@ -219,7 +220,7 @@ async function handlePoe2MarketSettingsRequest(request, response) {
             updatedByName: payload.displayName
         });
 
-        sendJson(response, 200, buildPoe2MarketSession(payload, catalog, settings, body.token));
+        sendJson(response, 200, await buildPoe2MarketSession(payload, catalog, settings, body.token));
     } catch (error) {
         sendJson(response, 400, {
             error: error.message
@@ -251,7 +252,20 @@ async function handlePoe2MarketIconRequest(url, response) {
     }
 }
 
-function buildPoe2MarketSession(payload, catalog, settings, token) {
+async function buildPoe2MarketSession(payload, catalog, settings, token) {
+    const userAgent = getPoe2MarketConfig().userAgent;
+    const history = await Promise.all(settings.history.map(async function(entry) {
+        const selectedLabels = Array.isArray(entry.selectedLabels) ? entry.selectedLabels : [];
+
+        return {
+            updatedByName: entry.updatedByName,
+            updatedAt: entry.updatedAt,
+            selectedCount: entry.selectedCount,
+            selectedLabels: await localizePoe2MarketLabelTexts(selectedLabels, userAgent),
+            postIntervalHours: entry.postIntervalHours
+        };
+    }));
+
     return {
         actorName: payload.displayName,
         league: catalog.league,
@@ -269,15 +283,7 @@ function buildPoe2MarketSession(payload, catalog, settings, token) {
             return product.id;
         }),
         postIntervalHours: settings.postIntervalHours,
-        history: settings.history.map(function(entry) {
-            return {
-                updatedByName: entry.updatedByName,
-                updatedAt: entry.updatedAt,
-                selectedCount: entry.selectedCount,
-                selectedLabels: Array.isArray(entry.selectedLabels) ? entry.selectedLabels : [],
-                postIntervalHours: entry.postIntervalHours
-            };
-        }),
+        history: history,
         configured: Boolean(settings.configured)
     };
 }

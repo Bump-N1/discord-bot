@@ -9,78 +9,78 @@ export const POE2_MARKET_MAX_POST_INTERVAL_HOURS = 24;
 export const POE2_MARKET_CATEGORIES = [
     {
         key: 'Currency',
-        label: 'Currency'
+        label: 'カレンシー'
     },
     {
         key: 'UncutGems',
-        label: 'Uncut Gems'
+        label: 'ジェムの原石'
     },
     {
         key: 'Fragments',
-        label: 'Fragments'
+        label: 'フラグメント'
     },
     {
         key: 'Ritual',
-        label: 'Ritual'
+        label: 'リチュアル'
     },
     {
         key: 'Breach',
-        label: 'Breach'
+        label: 'ブリーチ'
     },
     {
         key: 'Delirium',
-        label: 'Delirium'
+        label: 'デリリウム'
     },
     {
         key: 'Expedition',
-        label: 'Expedition'
+        label: 'エクスペディション'
     },
     {
         key: 'Abyss',
-        label: 'Abyss'
+        label: 'アビス'
     },
     {
         key: 'Ultimatum',
-        label: 'Ultimatum'
+        label: 'アルティメイタム'
     },
     {
         key: 'Runes',
-        label: 'Runes'
+        label: 'ルーン'
     },
     {
         key: 'Essences',
-        label: 'Essences'
+        label: 'エッセンス'
     }
 ];
 
 const KNOWN_PRODUCTS = {
     exalted: {
-        label: 'Exalted Orb',
+        label: '高貴なオーブ',
         category: 'Currency',
         iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lBZGRNb2RUb1JhcmUiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/ad7c366789/CurrencyAddModToRare.png`
     },
     chaos: {
-        label: 'Chaos Orb',
+        label: 'カオスオーブ',
         category: 'Currency',
         iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lSZXJvbGxSYXJlIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/c0ca392a78/CurrencyRerollRare.png`
     },
     annul: {
-        label: 'Orb of Annulment',
+        label: '消去のオーブ',
         category: 'Currency',
         iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQW5udWxsT3JiIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/2daba8ccca/AnnullOrb.png`
     },
     divine: {
-        label: 'Divine Orb',
+        label: '神のオーブ',
         category: 'Currency',
         iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lNb2RWYWx1ZXMiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/2986e220b3/CurrencyModValues.png`
     },
     'uncut-skill-gem-20': {
-        label: 'Uncut Skill Gem Lv20',
+        label: 'スキルジェムの原石 (レベル20)',
         category: 'UncutGems',
         iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvR2Vtcy9VbmN1dFNraWxsR2VtIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/97f0ceba15/UncutSkillGem.png`
     },
     'uncut-spirit-gem-20': {
-        label: 'Uncut Spirit Gem Lv20',
+        label: 'スピリットジェムの原石 (レベル20)',
         category: 'UncutGems',
         iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvR2Vtcy9VbmN1dFNraWxsR2VtQnVmZiIsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/ab25e9aa3b/UncutSkillGemBuff.png`
     }
