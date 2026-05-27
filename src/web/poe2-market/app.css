@@ -107,24 +107,38 @@ h2 {
     background: var(--surface);
 }
 
-.interval-field {
+.settings-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 18px;
-    padding: 16px 18px;
-    color: var(--muted);
+    min-height: 58px;
+    padding: 0 18px;
 }
 
-select {
-    min-width: 168px;
+.interval-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     height: 42px;
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 0 12px;
+    padding: 0 10px 0 6px;
+    color: var(--text);
+    background: #11161c;
+    cursor: pointer;
+}
+
+select {
+    width: 50px;
+    height: 38px;
+    border: 0;
+    padding: 0 4px;
     color: var(--text);
     background: #11161c;
     font: inherit;
+    font-weight: 600;
+    cursor: pointer;
 }
 
 .category-tabs {
@@ -175,6 +189,10 @@ input:focus {
 }
 
 select:focus {
+    outline: none;
+}
+
+.interval-control:focus-within {
     outline: 2px solid #517eea;
     outline-offset: -1px;
 }
@@ -404,16 +422,6 @@ select:focus {
     }
 
     .primary {
-        width: 100%;
-    }
-
-    .interval-field {
-        align-items: stretch;
-        flex-direction: column;
-        gap: 9px;
-    }
-
-    select {
         width: 100%;
     }
 

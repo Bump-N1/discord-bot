@@ -28,13 +28,13 @@
 
         <form id="settingsForm" class="hidden">
             <section class="setting-panel" aria-label="投稿設定">
-                <div class="panel-header">
+                <div class="settings-row">
                     <h2>投稿設定</h2>
+                    <label class="interval-control">
+                        <select id="postIntervalHours" name="postIntervalHours" aria-label="投稿頻度"></select>
+                        <span>時間ごと</span>
+                    </label>
                 </div>
-                <label class="interval-field">
-                    <span>投稿頻度</span>
-                    <select id="postIntervalHours" name="postIntervalHours" aria-label="投稿頻度"></select>
-                </label>
             </section>
 
             <div class="toolbar">
