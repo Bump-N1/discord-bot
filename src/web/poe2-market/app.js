@@ -1,7 +1,7 @@
 const token = new URLSearchParams(window.location.search).get('token') || '';
 const state = {
     session: null,
-    category: 'all',
+    category: 'Currency',
     selected: new Set()
 };
 
@@ -127,6 +127,7 @@ function buildProductOption(product) {
     });
     icon.className = `product-icon${product.iconUrl ? '' : ' fallback'}`;
     icon.alt = '';
+    icon.loading = 'lazy';
     icon.src = product.iconUrl || emptyIconDataUrl();
     icon.addEventListener('error', function() {
         icon.src = emptyIconDataUrl();

@@ -16,13 +16,21 @@ const API_ROOT = 'https://api.pathofexile.com';
 const POE_NINJA_API_ROOT = 'https://poe.ninja/poe2/api/economy/exchange/current/overview';
 const POE_NINJA_IMAGE_ROOT = 'https://www.pathofexile.com';
 const HOUR_SECONDS = 60 * 60;
+const CATALOG_CACHE_MS = 5 * 60 * 1000;
 const QUOTE_CURRENCY_IDS = [POE2_MARKET_BASE_CURRENCY_ID, POE2_MARKET_DIVINE_CURRENCY_ID];
 let requestedAccessToken = null;
+let cachedCatalog = null;
 
 export async function fetchPoe2MarketCatalog() {
     const config = getPoe2MarketConfig();
 
     validatePoe2MarketConfig(config);
+
+    if (cachedCatalog
+        && cachedCatalog.league === config.league
+        && cachedCatalog.expiresAt > Date.now()) {
+        return cachedCatalog.catalog;
+    }
 
     const overviews = await fetchPoeNinjaOverviews(config);
     const productMap = new Map();
@@ -56,11 +64,19 @@ export async function fetchPoe2MarketCatalog() {
 
     const products = Array.from(productMap.values()).sort(compareCatalogProducts);
 
-    return {
+    const catalog = {
         league: config.league,
         categories: POE2_MARKET_CATEGORIES,
         products: products
     };
+
+    cachedCatalog = {
+        league: config.league,
+        expiresAt: Date.now() + CATALOG_CACHE_MS,
+        catalog: catalog
+    };
+
+    return catalog;
 }
 
 export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()) {
