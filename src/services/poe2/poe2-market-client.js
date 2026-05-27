@@ -10,7 +10,10 @@ import {
     POE2_MARKET_CATEGORIES,
     POE2_MARKET_DIVINE_CURRENCY_ID
 } from './poe2-market-definition.js';
-import { localizePoe2MarketProducts } from './poe2-market-localization.js';
+import {
+    getPoe2JapaneseMarketProducts,
+    localizePoe2MarketProducts
+} from './poe2-market-localization.js';
 
 const TOKEN_URL = 'https://www.pathofexile.com/oauth/token';
 const API_ROOT = 'https://api.pathofexile.com';
@@ -23,7 +26,22 @@ const LEAGUE_CACHE_MS = 5 * 60 * 1000;
 const AUTO_LEAGUE = 'auto';
 const QUOTE_CURRENCY_IDS = [POE2_MARKET_BASE_CURRENCY_ID, POE2_MARKET_DIVINE_CURRENCY_ID];
 const LEGACY_CATEGORY_ALIASES = {
-    Ultimatum: 'SoulCores'
+    Ultimatum: 'SoulCores',
+    Idol: 'Idols'
+};
+const GAME_DISPLAY_OVERRIDES = {
+    'runic-splinter': {
+        category: 'Expedition',
+        sortOrder: -1
+    }
+};
+const POE_NINJA_SOURCE_CATEGORY_OVERRIDES = {
+    'simulacrum-splinter': 'Fragments',
+    simulacrum: 'Fragments',
+    'runic-splinter': 'Fragments'
+};
+const POE_NINJA_SOURCE_CATEGORY_BY_DISPLAY_CATEGORY = {
+    Incursion: 'SoulCores'
 };
 let requestedAccessToken = null;
 let cachedCatalog = null;
@@ -40,6 +58,36 @@ export async function fetchPoe2MarketCatalog() {
         return cachedCatalog.catalog;
     }
 
+    const products = (await loadCatalogProducts(config))
+        .map(normalizeMarketProductCategory)
+        .filter(isSupportedMarketCategory)
+        .sort(compareCatalogProducts);
+
+    const catalog = {
+        league: config.league,
+        categories: POE2_MARKET_CATEGORIES,
+        products: products
+    };
+
+    cachedCatalog = {
+        league: config.league,
+        expiresAt: Date.now() + CATALOG_CACHE_MS,
+        catalog: catalog
+    };
+
+    return catalog;
+}
+
+async function loadCatalogProducts(config) {
+    try {
+        return await getPoe2JapaneseMarketProducts(config.userAgent);
+    } catch (error) {
+        console.warn('PoE2 official catalog could not be loaded; using price-provider items:', error.message);
+        return await loadPoeNinjaCatalogProducts(config);
+    }
+}
+
+async function loadPoeNinjaCatalogProducts(config) {
     const overviews = await fetchPoeNinjaOverviews(config);
     const productMap = new Map();
     const knownProducts = new Map(getKnownPoe2MarketProducts().map(function(product) {
@@ -75,22 +123,7 @@ export async function fetchPoe2MarketCatalog() {
         }
     }
 
-    const products = (await localizePoe2MarketProducts(Array.from(productMap.values()), config.userAgent))
-        .sort(compareCatalogProducts);
-
-    const catalog = {
-        league: config.league,
-        categories: POE2_MARKET_CATEGORIES,
-        products: products
-    };
-
-    cachedCatalog = {
-        league: config.league,
-        expiresAt: Date.now() + CATALOG_CACHE_MS,
-        catalog: catalog
-    };
-
-    return catalog;
+    return await localizePoe2MarketProducts(Array.from(productMap.values()), config.userAgent);
 }
 
 export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()) {
@@ -223,7 +256,7 @@ async function fetchPoeNinjaMarketSnapshot(config, selectedProducts, now) {
     const requiredCategories = Array.from(new Set([
         'Currency',
         ...selectedProducts.map(function(product) {
-            return product.category;
+            return getPoeNinjaSourceCategory(product);
         })
     ]));
     const overviews = await fetchPoeNinjaOverviews(config, requiredCategories);
@@ -242,6 +275,12 @@ async function fetchPoeNinjaMarketSnapshot(config, selectedProducts, now) {
             };
         })
     };
+}
+
+function getPoeNinjaSourceCategory(product) {
+    return POE_NINJA_SOURCE_CATEGORY_OVERRIDES[product.id]
+        || POE_NINJA_SOURCE_CATEGORY_BY_DISPLAY_CATEGORY[product.category]
+        || product.category;
 }
 
 async function fetchPoeNinjaOverviews(config, categoryKeys = POE2_MARKET_CATEGORIES.map(function(category) {
@@ -282,14 +321,23 @@ function findPoeNinjaProductOverview(overviews, productId) {
 }
 
 function normalizeMarketProductCategory(product) {
-    const category = LEGACY_CATEGORY_ALIASES[product.category] || product.category;
+    const override = GAME_DISPLAY_OVERRIDES[product.id] || {};
+    const category = override.category || LEGACY_CATEGORY_ALIASES[product.category] || product.category;
+    const sortOrder = override.sortOrder ?? product.sortOrder;
 
-    return category === product.category
+    return category === product.category && sortOrder === product.sortOrder
         ? product
         : {
             ...product,
-            category: category
+            category: category,
+            sortOrder: sortOrder
         };
+}
+
+function isSupportedMarketCategory(product) {
+    return POE2_MARKET_CATEGORIES.some(function(category) {
+        return category.key === product.category;
+    });
 }
 
 function getPoeNinjaValueInPrimary(productId, line, core) {
@@ -414,6 +462,13 @@ function compareCatalogProducts(left, right) {
 
     if (leftCategory !== rightCategory) {
         return leftCategory - rightCategory;
+    }
+
+    const leftOrder = Number.isFinite(Number(left.sortOrder)) ? Number(left.sortOrder) : Number.MAX_SAFE_INTEGER;
+    const rightOrder = Number.isFinite(Number(right.sortOrder)) ? Number(right.sortOrder) : Number.MAX_SAFE_INTEGER;
+
+    if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
     }
 
     return left.label.localeCompare(right.label, 'ja-JP');
