@@ -27,6 +27,16 @@
         </section>
 
         <form id="settingsForm" class="hidden">
+            <section class="setting-panel" aria-label="投稿設定">
+                <div class="panel-header">
+                    <h2>投稿設定</h2>
+                </div>
+                <label class="interval-field">
+                    <span>投稿頻度</span>
+                    <select id="postIntervalHours" name="postIntervalHours" aria-label="投稿頻度"></select>
+                </label>
+            </section>
+
             <div class="toolbar">
                 <div id="categoryTabs" class="category-tabs" role="tablist" aria-label="カテゴリー"></div>
                 <label class="search-field">
@@ -46,6 +56,13 @@
             <div class="actions">
                 <button id="saveButton" class="primary" type="submit">設定を保存</button>
             </div>
+
+            <section class="history-panel" aria-label="保存履歴">
+                <div class="panel-header">
+                    <h2>最近の保存履歴</h2>
+                </div>
+                <div id="historyList" class="history-list"></div>
+            </section>
         </form>
     </main>
 

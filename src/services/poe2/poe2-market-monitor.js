@@ -68,8 +68,16 @@ async function runPoe2MarketMonitorTick(client) {
                 continue;
             }
 
+            const dueSubscriptions = group.subscriptions.filter(function(subscription) {
+                return isPostDue(subscription, group.settings.postIntervalHours);
+            });
+
+            if (dueSubscriptions.length === 0) {
+                continue;
+            }
+
             const snapshot = await fetchPoe2MarketSnapshot(group.settings.selectedProducts);
-            const targets = group.subscriptions.filter(function(subscription) {
+            const targets = dueSubscriptions.filter(function(subscription) {
                 return subscription.lastPostedChangeId !== snapshot.changeId;
             });
 
@@ -107,7 +115,7 @@ async function buildSubscriptionGroups(subscriptions) {
         }
 
         const settings = settingsByGuild.get(guildId);
-        const settingsKey = settings.selectedProducts.map(function(product) {
+        const settingsKey = `${settings.postIntervalHours}:` + settings.selectedProducts.map(function(product) {
             return product.id;
         }).join('|');
         const group = groups.get(settingsKey) || {
@@ -120,6 +128,16 @@ async function buildSubscriptionGroups(subscriptions) {
     }
 
     return groups;
+}
+
+function isPostDue(subscription, postIntervalHours) {
+    const lastPostedAt = Date.parse(subscription.lastPostedAt || subscription.enabledAt || subscription.updatedAt || '');
+
+    if (!Number.isFinite(lastPostedAt)) {
+        return true;
+    }
+
+    return Date.now() - lastPostedAt >= postIntervalHours * 60 * 60 * 1000;
 }
 
 async function sendSnapshotImage(client, channelId, image) {

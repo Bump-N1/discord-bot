@@ -34,7 +34,11 @@ import {
 } from './act-web-auth.js';
 import { fetchPoe2MarketCatalog } from '../poe2/poe2-market-client.js';
 import { getPoe2MarketConfig } from '../poe2/poe2-market-config.js';
-import { POE2_MARKET_MAX_PRODUCTS } from '../poe2/poe2-market-definition.js';
+import {
+    POE2_MARKET_MAX_POST_INTERVAL_HOURS,
+    POE2_MARKET_MAX_PRODUCTS,
+    POE2_MARKET_MIN_POST_INTERVAL_HOURS
+} from '../poe2/poe2-market-definition.js';
 import {
     getPoe2MarketSettings,
     savePoe2MarketSettings
@@ -162,9 +166,16 @@ async function handlePoe2MarketSettingsRequest(request, response) {
                 ? body.selectedProductIds.map(String)
                 : []
         ));
+        const postIntervalHours = Number(body.postIntervalHours);
 
         if (selectedProductIds.length > POE2_MARKET_MAX_PRODUCTS) {
             throw new Error(`表示できるアイテムは${POE2_MARKET_MAX_PRODUCTS}件までです。`);
+        }
+
+        if (!Number.isInteger(postIntervalHours)
+            || postIntervalHours < POE2_MARKET_MIN_POST_INTERVAL_HOURS
+            || postIntervalHours > POE2_MARKET_MAX_POST_INTERVAL_HOURS) {
+            throw new Error('投稿頻度は1時間から24時間の範囲で指定してください。');
         }
 
         const catalog = await fetchPoe2MarketCatalog();
@@ -181,7 +192,10 @@ async function handlePoe2MarketSettingsRequest(request, response) {
             throw new Error('選択したアイテムの一部を取得できませんでした。画面を更新してください。');
         }
 
-        const settings = await savePoe2MarketSettings(payload.guildId, selectedProducts, payload.userId);
+        const settings = await savePoe2MarketSettings(payload.guildId, selectedProducts, payload.userId, {
+            postIntervalHours: postIntervalHours,
+            updatedByName: payload.displayName
+        });
 
         sendJson(response, 200, buildPoe2MarketSession(payload, catalog, settings, body.token));
     } catch (error) {
@@ -231,6 +245,16 @@ function buildPoe2MarketSession(payload, catalog, settings, token) {
         }),
         selectedProductIds: settings.selectedProducts.map(function(product) {
             return product.id;
+        }),
+        postIntervalHours: settings.postIntervalHours,
+        history: settings.history.map(function(entry) {
+            return {
+                updatedByName: entry.updatedByName,
+                updatedAt: entry.updatedAt,
+                selectedCount: entry.selectedCount,
+                selectedLabels: Array.isArray(entry.selectedLabels) ? entry.selectedLabels : [],
+                postIntervalHours: entry.postIntervalHours
+            };
         }),
         configured: Boolean(settings.configured)
     };

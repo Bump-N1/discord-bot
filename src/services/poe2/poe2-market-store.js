@@ -1,8 +1,14 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import {
+    POE2_MARKET_DEFAULT_POST_INTERVAL_HOURS,
+    POE2_MARKET_MAX_POST_INTERVAL_HOURS,
+    POE2_MARKET_MIN_POST_INTERVAL_HOURS
+} from './poe2-market-definition.js';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const STORE_PATH = path.join(DATA_DIR, 'poe2-market.json');
+const SETTINGS_HISTORY_LIMIT = 10;
 let storeQueue = Promise.resolve();
 
 export async function getPoe2MarketSubscription(channelId) {
@@ -22,24 +28,46 @@ export async function getPoe2MarketSettings(guildId) {
     const settings = state.settings[guildId];
 
     if (settings && Array.isArray(settings.selectedProducts)) {
-        return settings;
+        return normalizeSettings(settings);
     }
 
     return {
         guildId: guildId,
         selectedProducts: [],
+        postIntervalHours: POE2_MARKET_DEFAULT_POST_INTERVAL_HOURS,
+        history: [],
         configured: false
     };
 }
 
-export async function savePoe2MarketSettings(guildId, selectedProducts, updatedBy) {
+export async function savePoe2MarketSettings(guildId, selectedProducts, updatedBy, options = {}) {
     return await withStoreLock(async function() {
         const state = await readState();
+        const currentSettings = normalizeSettings(state.settings[guildId] || {
+            guildId: guildId,
+            selectedProducts: [],
+            history: []
+        });
+        const postIntervalHours = normalizePostIntervalHours(options.postIntervalHours);
+        const updatedAt = new Date().toISOString();
+        const historyEntry = {
+            updatedBy: updatedBy,
+            updatedByName: String(options.updatedByName || updatedBy || ''),
+            updatedAt: updatedAt,
+            selectedCount: selectedProducts.length,
+            selectedLabels: selectedProducts.map(function(product) {
+                return product.label;
+            }),
+            postIntervalHours: postIntervalHours
+        };
         const settings = {
             guildId: guildId,
             selectedProducts: selectedProducts,
             updatedBy: updatedBy,
-            updatedAt: new Date().toISOString(),
+            updatedByName: historyEntry.updatedByName,
+            updatedAt: updatedAt,
+            postIntervalHours: postIntervalHours,
+            history: [historyEntry, ...currentSettings.history].slice(0, SETTINGS_HISTORY_LIMIT),
             configured: true
         };
 
@@ -81,6 +109,7 @@ export async function markPoe2MarketPosted(channelId, changeId) {
         }
 
         subscription.lastPostedChangeId = String(changeId);
+        subscription.lastPostedAt = new Date().toISOString();
         subscription.updatedAt = new Date().toISOString();
         await writeState(state);
 
@@ -123,5 +152,27 @@ async function writeState(state) {
         recursive: true
     });
     await writeFile(STORE_PATH, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+function normalizeSettings(settings) {
+    return {
+        ...settings,
+        postIntervalHours: normalizePostIntervalHours(settings.postIntervalHours),
+        history: Array.isArray(settings.history)
+            ? settings.history.slice(0, SETTINGS_HISTORY_LIMIT)
+            : []
+    };
+}
+
+function normalizePostIntervalHours(value) {
+    const hours = Number(value);
+
+    if (Number.isInteger(hours)
+        && hours >= POE2_MARKET_MIN_POST_INTERVAL_HOURS
+        && hours <= POE2_MARKET_MAX_POST_INTERVAL_HOURS) {
+        return hours;
+    }
+
+    return POE2_MARKET_DEFAULT_POST_INTERVAL_HOURS;
 }
 
