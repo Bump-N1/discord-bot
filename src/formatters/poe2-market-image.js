@@ -214,6 +214,10 @@ function formatSnapshotPeriod(changeId) {
 }
 
 function buildSnapshotSourceText(snapshot) {
+    if (snapshot.source === 'poe-ninja-overlay') {
+        return `Currency Exchange  /  取得 ${formatCapturedAt(snapshot.capturedAt)}`;
+    }
+
     if (snapshot.source === 'poe-ninja') {
         return `Currency Exchange  /  取得 ${formatCapturedAt(snapshot.capturedAt)}`;
     }
@@ -222,6 +226,10 @@ function buildSnapshotSourceText(snapshot) {
 }
 
 function buildFooterText(snapshot) {
+    if (snapshot.source === 'poe-ninja-overlay') {
+        return '取得元: poe.ninja / PoE Overlay / 暫定データ';
+    }
+
     if (snapshot.source === 'poe-ninja') {
         return '取得元: poe.ninja / 暫定データ';
     }

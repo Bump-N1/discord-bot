@@ -1,4 +1,5 @@
 const ICON_ROOT = 'https://www.pathofexile.com';
+const OVERLAY_ICON_ROOT = 'https://www.poeoverlay.com/_next/image?url=%2Fimages%2Ftrade%2Fv2%2F';
 
 export const POE2_MARKET_BASE_CURRENCY_ID = 'exalted';
 export const POE2_MARKET_DIVINE_CURRENCY_ID = 'divine';
@@ -95,6 +96,46 @@ const KNOWN_PRODUCTS = {
         label: 'スピリットジェムの原石 (レベル20)',
         category: 'UncutGems',
         iconUrl: `${ICON_ROOT}/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvR2Vtcy9VbmN1dFNraWxsR2VtQnVmZiIsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/ab25e9aa3b/UncutSkillGemBuff.png`
+    },
+    'architects-orb': {
+        label: 'アーキテクトオーブ',
+        category: 'Incursion',
+        iconUrl: `${OVERLAY_ICON_ROOT}architects-orb.png&w=64&q=75`
+    },
+    'crystallised-corruption': {
+        label: 'コラプトの結晶',
+        category: 'Incursion',
+        iconUrl: `${OVERLAY_ICON_ROOT}crystallised-corruption.png&w=64&q=75`
+    },
+    'core-destabiliser': {
+        label: 'コア不安定化装置',
+        category: 'Incursion',
+        iconUrl: `${OVERLAY_ICON_ROOT}core-destabiliser.png&w=64&q=75`
+    },
+    'ancient-infuser': {
+        label: '古代のインフューザー',
+        category: 'Incursion',
+        iconUrl: `${OVERLAY_ICON_ROOT}ancient-infuser.png&w=64&q=75`
+    },
+    'vaal-cultivation-orb': {
+        label: 'ヴァール培養のオーブ',
+        category: 'Incursion',
+        iconUrl: `${OVERLAY_ICON_ROOT}vaal-cultivation-orb.png&w=64&q=75`
+    },
+    'vaal-infuser': {
+        label: 'ヴァールインフューザー',
+        category: 'Incursion',
+        iconUrl: `${OVERLAY_ICON_ROOT}vaal-infuser.png&w=64&q=75`
+    },
+    'orb-of-extraction': {
+        label: '抽出のオーブ',
+        category: 'Incursion',
+        iconUrl: `${OVERLAY_ICON_ROOT}orb-of-extraction.png&w=64&q=75`
+    },
+    'vaal-siphoner': {
+        label: 'ヴァールサイフォナー',
+        category: 'Incursion',
+        iconUrl: `${OVERLAY_ICON_ROOT}vaal-siphoner.png&w=64&q=75`
     }
 };
 
