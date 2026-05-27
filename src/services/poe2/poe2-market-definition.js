@@ -12,24 +12,20 @@ export const POE2_MARKET_CATEGORIES = [
         label: 'カレンシー'
     },
     {
-        key: 'UncutGems',
-        label: 'ジェムの原石'
+        key: 'Essences',
+        label: 'エッセンス'
     },
     {
-        key: 'Fragments',
-        label: 'フラグメント'
-    },
-    {
-        key: 'Ritual',
-        label: 'リチュアル'
+        key: 'Delirium',
+        label: 'デリリウム'
     },
     {
         key: 'Breach',
         label: 'ブリーチ'
     },
     {
-        key: 'Delirium',
-        label: 'デリリウム'
+        key: 'Ritual',
+        label: 'リチュアル'
     },
     {
         key: 'Expedition',
@@ -40,16 +36,32 @@ export const POE2_MARKET_CATEGORIES = [
         label: 'アビス'
     },
     {
-        key: 'Ultimatum',
-        label: 'アルティメイタム'
+        key: 'Incursion',
+        label: 'インカージョン'
+    },
+    {
+        key: 'Fragments',
+        label: 'フラグメント'
     },
     {
         key: 'Runes',
         label: 'ルーン'
     },
     {
-        key: 'Essences',
-        label: 'エッセンス'
+        key: 'SoulCores',
+        label: 'ソウルコア'
+    },
+    {
+        key: 'Idols',
+        label: 'アイドル'
+    },
+    {
+        key: 'UncutGems',
+        label: 'ジェムの原石'
+    },
+    {
+        key: 'LineageSupportGems',
+        label: 'ジェム'
     }
 ];
 
