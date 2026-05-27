@@ -202,16 +202,12 @@ async function handlePoe2MarketSettingsRequest(request, response) {
         }
 
         const catalog = await fetchPoe2MarketCatalog();
-        const productById = new Map(catalog.products.map(function(product) {
-            return [product.id, product];
-        }));
-        const selectedProducts = selectedProductIds.map(function(productId) {
-            return productById.get(productId);
+        const selectedProductIdSet = new Set(selectedProductIds);
+        const selectedProducts = catalog.products.filter(function(product) {
+            return selectedProductIdSet.has(product.id);
         });
 
-        if (selectedProducts.some(function(product) {
-            return !product;
-        })) {
+        if (selectedProducts.length !== selectedProductIds.length) {
             throw new Error('選択したアイテムの一部を取得できませんでした。画面を更新してください。');
         }
 

@@ -93,15 +93,22 @@ function renderCategories() {
 
         button.type = 'button';
         button.className = 'category-tab';
+        button.dataset.category = category.key;
         button.textContent = category.label;
         button.setAttribute('role', 'tab');
         button.setAttribute('aria-selected', String(state.category === category.key));
         button.addEventListener('click', function() {
             state.category = category.key;
-            renderCategories();
+            updateCategorySelection();
             renderProducts();
         });
         elements.categoryTabs.append(button);
+    }
+}
+
+function updateCategorySelection() {
+    for (const button of elements.categoryTabs.querySelectorAll('.category-tab')) {
+        button.setAttribute('aria-selected', String(button.dataset.category === state.category));
     }
 }
 
