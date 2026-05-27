@@ -22,6 +22,9 @@ const CATALOG_CACHE_MS = 5 * 60 * 1000;
 const LEAGUE_CACHE_MS = 5 * 60 * 1000;
 const AUTO_LEAGUE = 'auto';
 const QUOTE_CURRENCY_IDS = [POE2_MARKET_BASE_CURRENCY_ID, POE2_MARKET_DIVINE_CURRENCY_ID];
+const LEGACY_CATEGORY_ALIASES = {
+    Ultimatum: 'SoulCores'
+};
 let requestedAccessToken = null;
 let cachedCatalog = null;
 let cachedAutoLeague = null;
@@ -39,8 +42,11 @@ export async function fetchPoe2MarketCatalog() {
 
     const overviews = await fetchPoeNinjaOverviews(config);
     const productMap = new Map();
+    const knownProducts = new Map(getKnownPoe2MarketProducts().map(function(product) {
+        return [product.id, product];
+    }));
 
-    for (const product of getKnownPoe2MarketProducts()) {
+    for (const product of knownProducts.values()) {
         productMap.set(product.id, product);
     }
 
@@ -58,10 +64,12 @@ export async function fetchPoe2MarketCatalog() {
                 label: getPoeNinjaLabel(line, metadata),
                 iconUrl: normalizePoeNinjaIconUrl(getPoeNinjaIconUrl(line, metadata))
             });
-            const known = productMap.get(id);
+            const known = knownProducts.get(id);
 
             productMap.set(id, {
                 ...candidate,
+                label: known?.label || candidate.label,
+                category: known?.category || candidate.category,
                 iconUrl: known?.iconUrl || candidate.iconUrl
             });
         }
@@ -91,6 +99,7 @@ export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()
     validatePoe2MarketConfig(config);
     requireSelectedProducts(selectedProducts);
     const localizedProducts = (await localizePoe2MarketProducts(selectedProducts, config.userAgent))
+        .map(normalizeMarketProductCategory)
         .sort(compareCatalogProducts);
 
     if (!shouldUseOfficialMarketApi(config)) {
@@ -270,6 +279,17 @@ function findPoeNinjaProductOverview(overviews, productId) {
         }) || overview.data.core?.primary === productId
             || Number.isFinite(Number(overview.data.core?.rates?.[productId]));
     }) || null;
+}
+
+function normalizeMarketProductCategory(product) {
+    const category = LEGACY_CATEGORY_ALIASES[product.category] || product.category;
+
+    return category === product.category
+        ? product
+        : {
+            ...product,
+            category: category
+        };
 }
 
 function getPoeNinjaValueInPrimary(productId, line, core) {
