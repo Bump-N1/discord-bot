@@ -8,16 +8,48 @@ export const POE2_MARKET_MIN_POST_INTERVAL_HOURS = 1;
 export const POE2_MARKET_MAX_POST_INTERVAL_HOURS = 24;
 export const POE2_MARKET_CATEGORIES = [
     {
-        key: 'Currency',
-        label: 'カレンシー'
+        key: 'Idols',
+        label: 'アイドル'
+    },
+    {
+        key: 'Incursion',
+        label: 'アッツィリ神殿'
+    },
+    {
+        key: 'Abyss',
+        label: 'アビス'
+    },
+    {
+        key: 'Expedition',
+        label: 'エクスペディション'
     },
     {
         key: 'Essences',
         label: 'エッセンス'
     },
     {
+        key: 'Currency',
+        label: 'カレンシー'
+    },
+    {
+        key: 'LineageSupportGems',
+        label: 'ジェム'
+    },
+    {
+        key: 'UncutGems',
+        label: 'ジェムの原石'
+    },
+    {
+        key: 'SoulCores',
+        label: 'ソウルコア'
+    },
+    {
         key: 'Delirium',
         label: 'デリリウム'
+    },
+    {
+        key: 'Fragments',
+        label: 'フラグメント'
     },
     {
         key: 'Breach',
@@ -28,40 +60,8 @@ export const POE2_MARKET_CATEGORIES = [
         label: 'リチュアル'
     },
     {
-        key: 'Expedition',
-        label: 'エクスペディション'
-    },
-    {
-        key: 'Abyss',
-        label: 'アビス'
-    },
-    {
-        key: 'Incursion',
-        label: 'インカージョン'
-    },
-    {
-        key: 'Fragments',
-        label: 'フラグメント'
-    },
-    {
         key: 'Runes',
         label: 'ルーン'
-    },
-    {
-        key: 'SoulCores',
-        label: 'ソウルコア'
-    },
-    {
-        key: 'Idols',
-        label: 'アイドル'
-    },
-    {
-        key: 'UncutGems',
-        label: 'ジェムの原石'
-    },
-    {
-        key: 'LineageSupportGems',
-        label: 'ジェム'
     }
 ];
 
@@ -143,7 +143,11 @@ export function createPoe2MarketProduct(id, fields = {}) {
         id: String(id),
         label: String(fields.label || known.label || formatProductId(id)),
         category: String(fields.category || known.category || 'Currency'),
-        iconUrl: String(fields.iconUrl || known.iconUrl || '')
+        sourceCategory: String(fields.sourceCategory || known.sourceCategory || fields.category || known.category || 'Currency'),
+        subCategory: String(fields.subCategory || known.subCategory || ''),
+        subCategoryOrder: Number.isFinite(Number(fields.subCategoryOrder)) ? Number(fields.subCategoryOrder) : Number.MAX_SAFE_INTEGER,
+        iconUrl: String(fields.iconUrl || known.iconUrl || ''),
+        sortOrder: Number.isFinite(Number(fields.sortOrder)) ? Number(fields.sortOrder) : Number.MAX_SAFE_INTEGER
     };
 }
 

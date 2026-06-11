@@ -1,7 +1,7 @@
 const token = new URLSearchParams(window.location.search).get('token') || '';
 const state = {
     session: null,
-    category: 'Currency',
+    category: 'all',
     selected: new Set()
 };
 
@@ -79,24 +79,29 @@ function renderPostIntervals() {
 
 function renderCategories() {
     const categories = [{
-        key: 'selected',
-        label: '選択中'
-    }, {
         key: 'all',
         label: '全て'
+    }, {
+        key: 'selected',
+        label: '選択中'
     }, ...state.session.categories];
 
     elements.categoryTabs.replaceChildren();
 
     for (const category of categories) {
         const button = document.createElement('button');
+        const label = document.createElement('span');
+        const count = document.createElement('span');
 
         button.type = 'button';
         button.className = 'category-tab';
         button.dataset.category = category.key;
-        button.textContent = category.label;
         button.setAttribute('role', 'tab');
         button.setAttribute('aria-selected', String(state.category === category.key));
+        label.className = 'category-label';
+        label.textContent = category.label;
+        count.className = 'category-count';
+        button.append(label, count);
         button.addEventListener('click', function() {
             state.category = category.key;
             updateCategorySelection();
@@ -104,11 +109,33 @@ function renderCategories() {
         });
         elements.categoryTabs.append(button);
     }
+
+    updateCategoryCounts();
 }
 
 function updateCategorySelection() {
     for (const button of elements.categoryTabs.querySelectorAll('.category-tab')) {
         button.setAttribute('aria-selected', String(button.dataset.category === state.category));
+    }
+}
+
+function updateCategoryCounts() {
+    const counts = new Map();
+
+    counts.set('all', state.session.products.length);
+    counts.set('selected', state.selected.size);
+
+    for (const product of state.session.products) {
+        counts.set(product.category, (counts.get(product.category) || 0) + 1);
+    }
+
+    for (const button of elements.categoryTabs.querySelectorAll('.category-tab')) {
+        const count = counts.get(button.dataset.category) || 0;
+        const countElement = button.querySelector('.category-count');
+
+        if (countElement) {
+            countElement.textContent = `(${count})`;
+        }
     }
 }
 
@@ -118,10 +145,13 @@ function renderProducts() {
         const matchesCategory = state.category === 'all'
             || (state.category === 'selected' && state.selected.has(product.id))
             || product.category === state.category;
-        const matchesQuery = !query || product.label.toLowerCase().includes(query);
+        const matchesQuery = !query
+            || product.label.toLowerCase().includes(query)
+            || getProductGroupLabel(product).toLowerCase().includes(query);
 
         return matchesCategory && matchesQuery;
     });
+    const groups = groupProducts(products);
 
     elements.productList.replaceChildren();
     elements.selectedCount.textContent = `${state.selected.size} / ${state.session.maxProducts}`;
@@ -131,9 +161,69 @@ function renderProducts() {
         return;
     }
 
-    for (const product of products) {
-        elements.productList.append(buildProductOption(product));
+    for (const group of groups) {
+        elements.productList.append(buildProductGroup(group));
     }
+}
+
+function groupProducts(products) {
+    const groups = [];
+    const groupByLabel = new Map();
+
+    for (const product of products) {
+        const label = getProductGroupLabel(product);
+        let group = groupByLabel.get(label);
+
+        if (!group) {
+            group = {
+                label: label,
+                products: []
+            };
+            groupByLabel.set(label, group);
+            groups.push(group);
+        }
+
+        group.products.push(product);
+    }
+
+    return groups;
+}
+
+function getProductGroupLabel(product) {
+    const subCategory = product.subCategory || getCategoryLabel(product.category);
+
+    if (state.category === 'all' || state.category === 'selected') {
+        return `${getCategoryLabel(product.category)} / ${subCategory}`;
+    }
+
+    return subCategory;
+}
+
+function getCategoryLabel(categoryKey) {
+    const category = state.session.categories.find(function(candidate) {
+        return candidate.key === categoryKey;
+    });
+
+    return category?.label || categoryKey;
+}
+
+function buildProductGroup(group) {
+    const section = document.createElement('section');
+    const heading = document.createElement('h3');
+    const grid = document.createElement('div');
+
+    section.className = 'product-group';
+    heading.className = 'product-group-title';
+    heading.textContent = group.label;
+    grid.className = 'product-grid';
+
+    for (const product of group.products) {
+        grid.append(buildProductOption(product));
+    }
+
+    section.append(heading, grid);
+
+    return section;
 }
 
 function buildProductOption(product) {
@@ -182,6 +272,7 @@ function updateProductSelection(productId, selected) {
         return;
     }
 
+    updateCategoryCounts();
     refreshVisibleProductOptions();
 }
 
@@ -204,7 +295,12 @@ function removeVisibleProductOption(productId) {
 
     for (const option of options) {
         if (option.dataset.productId === productId) {
+            const group = option.closest('.product-group');
+
             option.remove();
+            if (group && group.querySelectorAll('.product-option').length === 0) {
+                group.remove();
+            }
             break;
         }
     }
@@ -213,6 +309,7 @@ function removeVisibleProductOption(productId) {
         appendEmptyProductMessage();
     }
 
+    updateCategoryCounts();
     refreshVisibleProductOptions();
 }
 
@@ -277,6 +374,7 @@ async function saveSettings(event) {
         });
         state.selected = new Set(state.session.selectedProductIds);
         renderPostIntervals();
+        renderCategories();
         renderProducts();
         renderHistory();
         showNotice(

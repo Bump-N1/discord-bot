@@ -40,6 +40,9 @@ export async function localizePoe2MarketProducts(products, userAgent) {
                 ...product,
                 label: metadata.label,
                 category: metadata.category,
+                sourceCategory: metadata.sourceCategory,
+                subCategory: metadata.subCategory,
+                subCategoryOrder: metadata.subCategoryOrder,
                 iconUrl: product.iconUrl || metadata.iconUrl,
                 sortOrder: metadata.sortOrder
             }
@@ -137,7 +140,15 @@ async function fetchPoe2MarketProducts(userAgent) {
     const products = [];
 
     for (const group of payload.result || []) {
-        for (const [sortOrder, entry] of (group.entries || []).entries()) {
+        let currentSubCategory = '';
+        let itemSortOrder = 0;
+
+        for (const entry of group.entries || []) {
+            if (entry.id === 'sep') {
+                currentSubCategory = String(entry.text || '').trim();
+                continue;
+            }
+
             const id = String(entry.id || '').trim();
             const label = String(entry.text || '').trim();
             const image = String(entry.image || '').trim();
@@ -146,17 +157,251 @@ async function fetchPoe2MarketProducts(userAgent) {
                 continue;
             }
 
+            const mapped = mapOfficialMarketProduct(group.id, group.label, currentSubCategory, label);
+
             products.push({
                 id: id,
                 label: label,
-                category: String(group.id || ''),
+                category: mapped.category,
+                sourceCategory: String(group.id || ''),
+                subCategory: mapped.subCategory,
+                subCategoryOrder: getSubCategoryOrder(mapped.category, mapped.subCategory),
                 iconUrl: new URL(image, POE2_OFFICIAL_IMAGE_ROOT).toString(),
-                sortOrder: sortOrder
+                sortOrder: itemSortOrder
             });
+            itemSortOrder += 1;
         }
     }
 
     return products;
+}
+
+function mapOfficialMarketProduct(groupId, groupLabel, subCategory, label) {
+    const key = String(groupId || '');
+    const section = String(subCategory || '').trim();
+    const text = String(label || '');
+
+    if (key === 'Vaal') {
+        if (section === 'オーグメント') {
+            return {
+                category: 'SoulCores',
+                subCategory: 'ソウルコア'
+            };
+        }
+
+        return {
+            category: 'Incursion',
+            subCategory: section || 'カレンシー'
+        };
+    }
+
+    if (key === 'Ritual' && section === 'アイドル') {
+        return {
+            category: 'Idols',
+            subCategory: 'アイドル'
+        };
+    }
+
+    if (key === 'Verisium') {
+        return {
+            category: 'Expedition',
+            subCategory: getVerisiumSubCategory(text)
+        };
+    }
+
+    if (key === 'Idol') {
+        return {
+            category: 'Idols',
+            subCategory: 'アイドル'
+        };
+    }
+
+    if (key === 'Ultimatum') {
+        return {
+            category: 'SoulCores',
+            subCategory: 'ソウルコア'
+        };
+    }
+
+    if (key === 'Abyss') {
+        return {
+            category: 'Abyss',
+            subCategory: section || 'アビスの骨'
+        };
+    }
+
+    if (key === 'Currency') {
+        return {
+            category: 'Currency',
+            subCategory: getCurrencySubCategory(text, section)
+        };
+    }
+
+    if (key === 'Essences') {
+        return {
+            category: 'Essences',
+            subCategory: getEssenceSubCategory(text, section)
+        };
+    }
+
+    if (key === 'Runes') {
+        return {
+            category: 'Runes',
+            subCategory: getRuneSubCategory(text, section)
+        };
+    }
+
+    if (key === 'Expedition') {
+        return {
+            category: 'Expedition',
+            subCategory: section || 'エクスペディション'
+        };
+    }
+
+    if (key === 'Ritual') {
+        return {
+            category: 'Ritual',
+            subCategory: getRitualSubCategory(section)
+        };
+    }
+
+    if (key === 'Breach') {
+        return {
+            category: 'Breach',
+            subCategory: section || 'ブリーチ'
+        };
+    }
+
+    if (key === 'Delirium') {
+        return {
+            category: 'Delirium',
+            subCategory: section || 'デリリウム'
+        };
+    }
+
+    if (key === 'Fragments') {
+        return {
+            category: 'Fragments',
+            subCategory: section || 'フラグメント'
+        };
+    }
+
+    if (key === 'UncutGems') {
+        return {
+            category: 'UncutGems',
+            subCategory: section || 'ジェムの原石'
+        };
+    }
+
+    if (key === 'LineageSupportGems') {
+        return {
+            category: 'LineageSupportGems',
+            subCategory: 'リネージュサポートジェム'
+        };
+    }
+
+    return {
+        category: key,
+        subCategory: section || String(groupLabel || key)
+    };
+}
+
+function getVerisiumSubCategory(label) {
+    if (label.includes('合金')) {
+        return '合金';
+    }
+
+    if (label.includes('フラックス')) {
+        return 'フラックス';
+    }
+
+    if (label.includes('星明り')) {
+        return '星明りの鉱石';
+    }
+
+    return 'ヴェリシウム';
+}
+
+function getCurrencySubCategory(label, section) {
+    if (label.includes('宝飾職人')) {
+        return '宝飾職人のカレンシー';
+    }
+
+    if (label.includes('シャード')) {
+        return 'カレンシーシャード';
+    }
+
+    if (label.includes('品質')) {
+        return '品質カレンシー';
+    }
+
+    if (label.includes('鑑定')) {
+        return '鑑定カレンシー';
+    }
+
+    return section || 'カレンシー';
+}
+
+function getEssenceSubCategory(label, section) {
+    if (label.includes('レッサーエッセンス')) {
+        return 'レッサーエッセンス';
+    }
+
+    if (label.includes('グレーターエッセンス')) {
+        return 'グレーターエッセンス';
+    }
+
+    if (label.includes('パーフェクトエッセンス')) {
+        return 'パーフェクトエッセンス';
+    }
+
+    if (label.includes('コラプトエッセンス')) {
+        return 'コラプトエッセンス';
+    }
+
+    return section || 'エッセンス';
+}
+
+function getRuneSubCategory(label, section) {
+    if (label.includes('パーフェクトルーン')) {
+        return 'パーフェクトルーン';
+    }
+
+    if (label.includes('グレータールーン')) {
+        return 'グレータールーン';
+    }
+
+    return section || 'ルーン';
+}
+
+function getRitualSubCategory(section) {
+    if (section === 'オーグメント') {
+        return '特殊お告げ';
+    }
+
+    return section || 'お告げ';
+}
+
+function getSubCategoryOrder(category, subCategory) {
+    const order = {
+        Idols: ['アイドル'],
+        Incursion: ['カレンシー', 'ソウルコア'],
+        Abyss: ['アビスの骨', 'お告げ', 'ピナクルフラグメント', 'アビサルアイ'],
+        Expedition: ['エクスペディション', 'お告げ', 'ヴェリシウム', '合金', 'フラックス', '星明りの鉱石', 'オーグメント'],
+        Essences: ['レッサーエッセンス', 'エッセンス', 'グレーターエッセンス', 'パーフェクトエッセンス', 'コラプトエッセンス'],
+        Currency: ['カレンシー', '宝飾職人のカレンシー', 'カレンシーシャード', '品質カレンシー', '鑑定カレンシー'],
+        LineageSupportGems: ['リネージュサポートジェム'],
+        UncutGems: ['サポートジェムの原石', 'リザーブジェムの原石', 'スキルジェムの原石', 'ジェムの原石'],
+        SoulCores: ['ソウルコア'],
+        Delirium: ['デリリウム', '液化した感情'],
+        Fragments: ['フラグメント', 'アルティメイタムフラグメント', 'ピナクルフラグメント', '聖廟の鍵'],
+        Breach: ['ブリーチ', 'カタリスト', 'ピナクルフラグメント'],
+        Ritual: ['お告げ', '特殊お告げ', 'ピナクルフラグメント'],
+        Runes: ['ルーン', 'パーフェクトルーン', 'グレータールーン']
+    };
+    const index = (order[category] || []).indexOf(subCategory);
+
+    return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
 }
 
 async function getPoe2EnglishItemLabels(userAgent) {

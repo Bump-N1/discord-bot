@@ -37,24 +37,28 @@
                 </div>
             </section>
 
-            <div class="toolbar">
-                <div id="categoryTabs" class="category-tabs" role="tablist" aria-label="カテゴリー"></div>
-                <label class="search-field">
-                    <span class="sr-only">アイテムを検索</span>
-                    <input id="searchInput" type="search" autocomplete="off" placeholder="アイテムを検索">
-                </label>
+            <div class="market-editor">
+                <aside class="category-sidebar" aria-label="カテゴリー">
+                    <div id="categoryTabs" class="category-tabs" role="tablist" aria-label="カテゴリー"></div>
+                </aside>
+
+                <section class="selection-panel" aria-label="表示アイテム">
+                    <div class="panel-header">
+                        <h2>表示アイテム</h2>
+                        <span id="selectedCount" class="selected-count"></span>
+                    </div>
+                    <div id="productList" class="product-list"></div>
+                </section>
             </div>
 
-            <section class="selection-panel" aria-label="表示アイテム">
-                <div class="panel-header">
-                    <h2>表示アイテム</h2>
-                    <span id="selectedCount" class="selected-count"></span>
+            <div class="bottom-controls">
+                <label class="search-field">
+                    <span class="sr-only">アイテムを検索</span>
+                    <input id="searchInput" type="search" autocomplete="off" placeholder="キーワードを入力してください...">
+                </label>
+                <div class="actions">
+                    <button id="saveButton" class="primary" type="submit">設定を保存</button>
                 </div>
-                <div id="productList" class="product-list"></div>
-            </section>
-
-            <div class="actions">
-                <button id="saveButton" class="primary" type="submit">設定を保存</button>
             </div>
 
             <section class="history-panel" aria-label="保存履歴">
