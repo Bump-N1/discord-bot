@@ -9,12 +9,18 @@
 </head>
 <body>
     <header class="app-header">
-        <div>
+        <button id="categoryToggle" class="category-menu-button" type="button" aria-label="カテゴリーを開く" aria-expanded="false" aria-controls="categoryTabs">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+        <div class="header-title">
             <p class="brand-label">PoE2</p>
             <h1>相場の表示アイテム</h1>
         </div>
         <span id="leagueBadge" class="league-badge"></span>
     </header>
+    <div id="categoryBackdrop" class="category-backdrop" hidden></div>
 
     <main class="layout">
         <section id="loadingView" class="state-view">

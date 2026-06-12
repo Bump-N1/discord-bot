@@ -2,8 +2,11 @@ const token = new URLSearchParams(window.location.search).get('token') || '';
 const state = {
     session: null,
     category: 'all',
+    categoryMenuOpen: false,
     selected: new Set()
 };
+let productIconObserver = null;
+const mobileCategoryQuery = window.matchMedia('(max-width: 680px)');
 
 const elements = {
     loadingView: document.querySelector('#loadingView'),
@@ -12,6 +15,9 @@ const elements = {
     settingsForm: document.querySelector('#settingsForm'),
     leagueBadge: document.querySelector('#leagueBadge'),
     postIntervalHours: document.querySelector('#postIntervalHours'),
+    categoryToggle: document.querySelector('#categoryToggle'),
+    categoryBackdrop: document.querySelector('#categoryBackdrop'),
+    categorySidebar: document.querySelector('.category-sidebar'),
     categoryTabs: document.querySelector('#categoryTabs'),
     searchInput: document.querySelector('#searchInput'),
     productList: document.querySelector('#productList'),
@@ -26,6 +32,11 @@ boot();
 async function boot() {
     elements.settingsForm.addEventListener('submit', saveSettings);
     elements.searchInput.addEventListener('input', renderProducts);
+    elements.categoryToggle.addEventListener('click', toggleCategoryMenu);
+    elements.categoryBackdrop.addEventListener('click', closeCategoryMenu);
+    document.addEventListener('pointerdown', handleDocumentPointerDown);
+    document.addEventListener('keydown', handleDocumentKeydown);
+    mobileCategoryQuery.addEventListener('change', syncCategoryMenu);
 
     if (!token) {
         showFatalError('リンクが正しくありません。Discordから開き直してください。');
@@ -60,6 +71,7 @@ function render() {
     elements.leagueBadge.textContent = state.session.league;
     renderPostIntervals();
     renderCategories();
+    syncCategoryMenu();
     renderProducts();
     renderHistory();
 }
@@ -104,6 +116,10 @@ function renderCategories() {
         button.append(label, count);
         button.addEventListener('click', function() {
             state.category = category.key;
+            if (mobileCategoryQuery.matches) {
+                state.categoryMenuOpen = false;
+                syncCategoryMenu();
+            }
             updateCategorySelection();
             renderProducts();
         });
@@ -111,6 +127,56 @@ function renderCategories() {
     }
 
     updateCategoryCounts();
+}
+
+function toggleCategoryMenu() {
+    state.categoryMenuOpen = !state.categoryMenuOpen;
+    syncCategoryMenu();
+}
+
+function closeCategoryMenu() {
+    if (!state.categoryMenuOpen) {
+        return;
+    }
+
+    state.categoryMenuOpen = false;
+    syncCategoryMenu();
+}
+
+function handleDocumentKeydown(event) {
+    if (event.key === 'Escape') {
+        closeCategoryMenu();
+    }
+}
+
+function handleDocumentPointerDown(event) {
+    if (!mobileCategoryQuery.matches || !state.categoryMenuOpen) {
+        return;
+    }
+
+    if (
+        elements.categorySidebar.contains(event.target)
+        || elements.categoryToggle.contains(event.target)
+    ) {
+        return;
+    }
+
+    closeCategoryMenu();
+}
+
+function syncCategoryMenu() {
+    const isMobile = mobileCategoryQuery.matches;
+    const open = !isMobile || state.categoryMenuOpen;
+
+    elements.categorySidebar?.classList.toggle('open', open);
+    elements.categoryBackdrop.hidden = !isMobile || !state.categoryMenuOpen;
+    elements.categoryBackdrop.classList.toggle('open', isMobile && state.categoryMenuOpen);
+    document.body.classList.toggle('category-menu-open', isMobile && state.categoryMenuOpen);
+    elements.categoryToggle.setAttribute('aria-expanded', String(state.categoryMenuOpen));
+    elements.categoryToggle.setAttribute(
+        'aria-label',
+        state.categoryMenuOpen ? 'カテゴリーを閉じる' : 'カテゴリーを開く'
+    );
 }
 
 function updateCategorySelection() {
@@ -153,6 +219,7 @@ function renderProducts() {
     });
     const groups = groupProducts(products);
 
+    resetProductIconObserver();
     elements.productList.replaceChildren();
     elements.selectedCount.textContent = `${state.selected.size} / ${state.session.maxProducts}`;
 
@@ -164,6 +231,8 @@ function renderProducts() {
     for (const group of groups) {
         elements.productList.append(buildProductGroup(group));
     }
+
+    observeProductIcons();
 }
 
 function groupProducts(products) {
@@ -193,7 +262,11 @@ function getProductGroupLabel(product) {
     const subCategory = product.subCategory || getCategoryLabel(product.category);
 
     if (state.category === 'all' || state.category === 'selected') {
-        return `${getCategoryLabel(product.category)} / ${subCategory}`;
+        const category = getCategoryLabel(product.category);
+
+        return subCategory && subCategory !== category
+            ? `${category} / ${subCategory}`
+            : category;
     }
 
     return subCategory;
@@ -227,37 +300,129 @@ function buildProductGroup(group) {
 }
 
 function buildProductOption(product) {
-    const option = document.createElement('label');
-    const checkbox = document.createElement('input');
+    const option = document.createElement('button');
     const icon = document.createElement('img');
     const name = document.createElement('span');
     const selected = state.selected.has(product.id);
     const disabled = !selected && state.selected.size >= state.session.maxProducts;
 
-    option.className = `product-option${disabled ? ' disabled' : ''}`;
+    option.type = 'button';
+    option.className = `product-option${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}`;
     option.dataset.productId = product.id;
-    checkbox.type = 'checkbox';
-    checkbox.checked = selected;
-    checkbox.disabled = disabled;
-    checkbox.addEventListener('change', function() {
-        updateProductSelection(product.id, checkbox.checked);
+    option.disabled = disabled;
+    option.title = getProductTooltip(product);
+    option.setAttribute('aria-pressed', String(selected));
+    option.addEventListener('click', function() {
+        updateProductSelection(product.id, !state.selected.has(product.id));
     });
     icon.className = `product-icon${product.iconUrl ? '' : ' fallback'}`;
     icon.alt = '';
-    icon.loading = 'lazy';
-    icon.src = product.iconUrl || emptyIconDataUrl();
+    icon.decoding = 'async';
+    icon.src = emptyIconDataUrl();
+    if (product.iconUrl) {
+        icon.dataset.src = product.iconUrl;
+    }
     icon.addEventListener('error', function() {
-        icon.src = emptyIconDataUrl();
-        icon.classList.add('fallback');
-    }, {
-        once: true
+        handleProductIconError(icon);
     });
     name.className = 'product-name';
     name.textContent = product.label;
-    name.title = product.label;
-    option.append(checkbox, icon, name);
+    option.append(icon, name);
 
     return option;
+}
+
+function getProductTooltip(product) {
+    return product.description
+        ? `${product.label}\n${product.description}`
+        : product.label;
+}
+
+function resetProductIconObserver() {
+    if (!productIconObserver) {
+        return;
+    }
+
+    productIconObserver.disconnect();
+    productIconObserver = null;
+}
+
+function observeProductIcons() {
+    const icons = Array.from(elements.productList.querySelectorAll('.product-icon[data-src]'));
+
+    if (icons.length === 0) {
+        return;
+    }
+
+    if (!('IntersectionObserver' in window)) {
+        icons.forEach(loadProductIcon);
+        return;
+    }
+
+    productIconObserver = new IntersectionObserver(function(entries, observer) {
+        for (const entry of entries) {
+            if (!entry.isIntersecting) {
+                continue;
+            }
+
+            loadProductIcon(entry.target);
+            observer.unobserve(entry.target);
+        }
+    }, {
+        root: elements.productList,
+        rootMargin: '160px 0px'
+    });
+
+    icons.forEach(function(icon) {
+        productIconObserver.observe(icon);
+    });
+}
+
+function loadProductIcon(icon) {
+    const source = icon.dataset.src;
+
+    if (!source || icon.dataset.loaded === 'true') {
+        return;
+    }
+
+    const retryCount = Number(icon.dataset.retryCount || 0);
+
+    icon.dataset.loaded = 'true';
+    icon.classList.remove('fallback');
+    icon.src = retryCount > 0
+        ? withRetryParam(source, retryCount)
+        : source;
+}
+
+function handleProductIconError(icon) {
+    const source = icon.dataset.src;
+    const retryCount = Number(icon.dataset.retryCount || 0);
+
+    icon.dataset.loaded = 'false';
+    icon.src = emptyIconDataUrl();
+    icon.classList.add('fallback');
+
+    if (!source || retryCount >= 1) {
+        return;
+    }
+
+    icon.dataset.retryCount = String(retryCount + 1);
+    window.setTimeout(function() {
+        if (icon.isConnected) {
+            loadProductIcon(icon);
+        }
+    }, 700);
+}
+
+function withRetryParam(source, retryCount) {
+    try {
+        const url = new URL(source, window.location.href);
+
+        url.searchParams.set('_retry', String(retryCount));
+        return `${url.pathname}${url.search}${url.hash}`;
+    } catch (error) {
+        return source;
+    }
 }
 
 function updateProductSelection(productId, selected) {
@@ -280,12 +445,12 @@ function refreshVisibleProductOptions() {
     elements.selectedCount.textContent = `${state.selected.size} / ${state.session.maxProducts}`;
 
     for (const option of elements.productList.querySelectorAll('.product-option')) {
-        const checkbox = option.querySelector('input[type="checkbox"]');
         const selected = state.selected.has(option.dataset.productId);
         const disabled = !selected && state.selected.size >= state.session.maxProducts;
 
-        checkbox.checked = selected;
-        checkbox.disabled = disabled;
+        option.disabled = disabled;
+        option.setAttribute('aria-pressed', String(selected));
+        option.classList.toggle('selected', selected);
         option.classList.toggle('disabled', disabled);
     }
 }

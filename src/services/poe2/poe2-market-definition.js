@@ -8,60 +8,60 @@ export const POE2_MARKET_MIN_POST_INTERVAL_HOURS = 1;
 export const POE2_MARKET_MAX_POST_INTERVAL_HOURS = 24;
 export const POE2_MARKET_CATEGORIES = [
     {
-        key: 'Idols',
-        label: 'アイドル'
-    },
-    {
-        key: 'Incursion',
-        label: 'アッツィリ神殿'
-    },
-    {
-        key: 'Abyss',
-        label: 'アビス'
-    },
-    {
-        key: 'Expedition',
-        label: 'エクスペディション'
+        key: 'Currency',
+        label: 'カレンシー'
     },
     {
         key: 'Essences',
         label: 'エッセンス'
     },
     {
-        key: 'Currency',
-        label: 'カレンシー'
-    },
-    {
-        key: 'LineageSupportGems',
-        label: 'ジェム'
-    },
-    {
-        key: 'UncutGems',
-        label: 'ジェムの原石'
-    },
-    {
-        key: 'SoulCores',
-        label: 'ソウルコア'
-    },
-    {
         key: 'Delirium',
         label: 'デリリウム'
-    },
-    {
-        key: 'Fragments',
-        label: 'フラグメント'
     },
     {
         key: 'Breach',
         label: 'ブリーチ'
     },
     {
-        key: 'Ritual',
-        label: 'リチュアル'
+        key: 'Abyss',
+        label: 'アビス'
+    },
+    {
+        key: 'Incursion',
+        label: 'アッツィリ神殿'
+    },
+    {
+        key: 'Fragments',
+        label: 'フラグメント'
     },
     {
         key: 'Runes',
         label: 'ルーン'
+    },
+    {
+        key: 'Ritual',
+        label: 'リチュアル'
+    },
+    {
+        key: 'SoulCores',
+        label: 'ソウルコア'
+    },
+    {
+        key: 'Idols',
+        label: 'アイドル'
+    },
+    {
+        key: 'UncutGems',
+        label: 'ジェムの原石'
+    },
+    {
+        key: 'LineageSupportGems',
+        label: 'ジェム'
+    },
+    {
+        key: 'Expedition',
+        label: 'エクスペディション'
     }
 ];
 
@@ -146,6 +146,7 @@ export function createPoe2MarketProduct(id, fields = {}) {
         sourceCategory: String(fields.sourceCategory || known.sourceCategory || fields.category || known.category || 'Currency'),
         subCategory: String(fields.subCategory || known.subCategory || ''),
         subCategoryOrder: Number.isFinite(Number(fields.subCategoryOrder)) ? Number(fields.subCategoryOrder) : Number.MAX_SAFE_INTEGER,
+        description: String(fields.description || known.description || ''),
         iconUrl: String(fields.iconUrl || known.iconUrl || ''),
         sortOrder: Number.isFinite(Number(fields.sortOrder)) ? Number(fields.sortOrder) : Number.MAX_SAFE_INTEGER
     };
