@@ -24,20 +24,12 @@ export const POE2_MARKET_CATEGORIES = [
         label: 'ブリーチ'
     },
     {
-        key: 'Ritual',
-        label: 'リチュアル'
-    },
-    {
-        key: 'Expedition',
-        label: 'エクスペディション'
-    },
-    {
         key: 'Abyss',
         label: 'アビス'
     },
     {
         key: 'Incursion',
-        label: 'インカージョン'
+        label: 'アッツィリ神殿'
     },
     {
         key: 'Fragments',
@@ -46,6 +38,10 @@ export const POE2_MARKET_CATEGORIES = [
     {
         key: 'Runes',
         label: 'ルーン'
+    },
+    {
+        key: 'Ritual',
+        label: 'リチュアル'
     },
     {
         key: 'SoulCores',
@@ -62,6 +58,10 @@ export const POE2_MARKET_CATEGORIES = [
     {
         key: 'LineageSupportGems',
         label: 'ジェム'
+    },
+    {
+        key: 'Expedition',
+        label: 'エクスペディション'
     }
 ];
 
@@ -143,7 +143,12 @@ export function createPoe2MarketProduct(id, fields = {}) {
         id: String(id),
         label: String(fields.label || known.label || formatProductId(id)),
         category: String(fields.category || known.category || 'Currency'),
-        iconUrl: String(fields.iconUrl || known.iconUrl || '')
+        sourceCategory: String(fields.sourceCategory || known.sourceCategory || fields.category || known.category || 'Currency'),
+        subCategory: String(fields.subCategory || known.subCategory || ''),
+        subCategoryOrder: Number.isFinite(Number(fields.subCategoryOrder)) ? Number(fields.subCategoryOrder) : Number.MAX_SAFE_INTEGER,
+        description: String(fields.description || known.description || ''),
+        iconUrl: String(fields.iconUrl || known.iconUrl || ''),
+        sortOrder: Number.isFinite(Number(fields.sortOrder)) ? Number(fields.sortOrder) : Number.MAX_SAFE_INTEGER
     };
 }
 

@@ -27,7 +27,9 @@ const AUTO_LEAGUE = 'auto';
 const QUOTE_CURRENCY_IDS = [POE2_MARKET_BASE_CURRENCY_ID, POE2_MARKET_DIVINE_CURRENCY_ID];
 const LEGACY_CATEGORY_ALIASES = {
     Ultimatum: 'SoulCores',
-    Idol: 'Idols'
+    Idol: 'Idols',
+    Vaal: 'Incursion',
+    Verisium: 'Expedition'
 };
 const GAME_DISPLAY_OVERRIDES = {
     'runic-splinter': {
@@ -41,7 +43,9 @@ const POE_NINJA_SOURCE_CATEGORY_OVERRIDES = {
     'runic-splinter': 'Fragments'
 };
 const POE_NINJA_SOURCE_CATEGORY_BY_DISPLAY_CATEGORY = {
-    Incursion: 'SoulCores'
+    Incursion: 'SoulCores',
+    SoulCores: 'SoulCores',
+    Idols: 'Idols'
 };
 let requestedAccessToken = null;
 let cachedCatalog = null;
@@ -280,6 +284,8 @@ async function fetchPoeNinjaMarketSnapshot(config, selectedProducts, now) {
 function getPoeNinjaSourceCategory(product) {
     return POE_NINJA_SOURCE_CATEGORY_OVERRIDES[product.id]
         || POE_NINJA_SOURCE_CATEGORY_BY_DISPLAY_CATEGORY[product.category]
+        || LEGACY_CATEGORY_ALIASES[product.sourceCategory]
+        || product.sourceCategory
         || product.category;
 }
 
@@ -323,13 +329,15 @@ function findPoeNinjaProductOverview(overviews, productId) {
 function normalizeMarketProductCategory(product) {
     const override = GAME_DISPLAY_OVERRIDES[product.id] || {};
     const category = override.category || LEGACY_CATEGORY_ALIASES[product.category] || product.category;
+    const sourceCategory = product.sourceCategory || product.category;
     const sortOrder = override.sortOrder ?? product.sortOrder;
 
-    return category === product.category && sortOrder === product.sortOrder
+    return category === product.category && sourceCategory === product.sourceCategory && sortOrder === product.sortOrder
         ? product
         : {
             ...product,
             category: category,
+            sourceCategory: sourceCategory,
             sortOrder: sortOrder
         };
 }
@@ -466,6 +474,16 @@ function compareCatalogProducts(left, right) {
 
     const leftOrder = Number.isFinite(Number(left.sortOrder)) ? Number(left.sortOrder) : Number.MAX_SAFE_INTEGER;
     const rightOrder = Number.isFinite(Number(right.sortOrder)) ? Number(right.sortOrder) : Number.MAX_SAFE_INTEGER;
+    const leftSubCategoryOrder = Number.isFinite(Number(left.subCategoryOrder))
+        ? Number(left.subCategoryOrder)
+        : Number.MAX_SAFE_INTEGER;
+    const rightSubCategoryOrder = Number.isFinite(Number(right.subCategoryOrder))
+        ? Number(right.subCategoryOrder)
+        : Number.MAX_SAFE_INTEGER;
+
+    if (leftSubCategoryOrder !== rightSubCategoryOrder) {
+        return leftSubCategoryOrder - rightSubCategoryOrder;
+    }
 
     if (leftOrder !== rightOrder) {
         return leftOrder - rightOrder;
