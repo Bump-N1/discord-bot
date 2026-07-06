@@ -13,11 +13,19 @@ const MAP_LABELS = {
     Aberration_WP: 'Aberration',
     Extinction_WP: 'Extinction',
     Ragnarok_WP: 'Ragnarok',
+    Astraeos_WP: 'Astraeos',
     AstraeosDLC: 'Astraeos',
     Valguero_WP: 'Valguero',
+    LostColony_WP: 'Lost Colony',
     LostColonyDLC: 'Lost Colony',
+    Genesis_WP: 'Genesis 1',
     GenesisDLC: 'Genesis 1',
     Astraeos: 'Astraeos (Mod map)'
+};
+const MAP_ALIASES = {
+    AstraeosDLC: 'Astraeos_WP',
+    LostColonyDLC: 'LostColony_WP',
+    GenesisDLC: 'Genesis_WP'
 };
 
 export async function fetchNitradoGameServer(config) {
@@ -146,12 +154,12 @@ async function fetchOptionalNitradoSettingsConfig(config) {
 }
 
 function normalizeNitradoServerConfig(gameServer, settingsConfig = {}, fallbackServerName = '') {
-    const map = firstText(settingsConfig.map, getFirstValue(gameServer, [
+    const map = normalizeMapValue(firstText(settingsConfig.map, getFirstValue(gameServer, [
         'settings.config.map',
         'query.map',
         'map',
         'game_specific.map'
-    ]));
+    ])));
     const activeMods = firstText(settingsConfig['active-mods'], getFirstValue(gameServer, [
         'settings.config.active-mods',
         'settings.config.ActiveMods',
@@ -506,9 +514,15 @@ function getServerAddress(gameServer) {
 }
 
 function normalizeMapName(value) {
-    const mapValue = String(value || '').trim();
+    const mapValue = normalizeMapValue(value);
 
     return MAP_LABELS[mapValue] || mapValue.replace(/_WP$/u, '').trim();
+}
+
+function normalizeMapValue(value) {
+    const mapValue = String(value || '').trim();
+
+    return MAP_ALIASES[mapValue] || mapValue;
 }
 
 function getConfiguredServerName(settingsConfig) {

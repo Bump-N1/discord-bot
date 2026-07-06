@@ -43,11 +43,10 @@ function getMapOptions() {
         { value: 'Aberration_WP', label: 'Aberration' },
         { value: 'Extinction_WP', label: 'Extinction' },
         { value: 'Ragnarok_WP', label: 'Ragnarok' },
-        { value: 'AstraeosDLC', label: 'Astraeos' },
+        { value: 'Astraeos_WP', label: 'Astraeos' },
         { value: 'Valguero_WP', label: 'Valguero' },
-        { value: 'LostColonyDLC', label: 'Lost Colony' },
-        { value: 'GenesisDLC', label: 'Genesis 1' },
-        { value: 'Astraeos', label: 'Astraeos (Mod map)' }
+        { value: 'LostColony_WP', label: 'Lost Colony' },
+        { value: 'Genesis_WP', label: 'Genesis 1' }
     ];
 }
 
