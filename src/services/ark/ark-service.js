@@ -35,6 +35,7 @@ export async function getArkSettings() {
         fetchNitradoRestartSchedule(config),
         refreshArkConfigHistory()
     ]);
+
     assertFields(nitradoSettings.settings, [
         'experience',
         'taming',

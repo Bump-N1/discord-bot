@@ -6,7 +6,9 @@ import { handleOwCommand } from './commands/ow.js';
 import { handleOwHeroAutocomplete, handleOwHeroCommand } from './commands/ow-hero.js';
 import { handleActCommand, handleActComponent, handleActModalSubmit } from './commands/act.js';
 import {
+    handleArkEditCommand,
     handleArkJoinCommand,
+    handleArkRebootCommand,
     handleArkSettingsCommand,
     handleArkStatusCommand
 } from './commands/ark.js';
@@ -61,8 +63,18 @@ client.on('interactionCreate', async function(interaction) {
         return;
     }
 
+    if (interaction.commandName === 'ark-edit') {
+        await handleArkEditCommand(interaction);
+        return;
+    }
+
     if (interaction.commandName === 'ark-join') {
         await handleArkJoinCommand(interaction);
+        return;
+    }
+
+    if (interaction.commandName === 'ark-reboot') {
+        await handleArkRebootCommand(interaction);
         return;
     }
 
