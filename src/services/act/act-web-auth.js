@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 const CREATE_LINK_TTL_MS = 30 * 60 * 1000;
 const MANAGE_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const MARKET_EDIT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
+const ARK_EDIT_LINK_TTL_MS = 30 * 60 * 1000;
 
 export function isActWebConfigured() {
     return Boolean(getActWebBaseUrl() && getSigningSecret());
@@ -37,6 +38,13 @@ export function buildPoe2MarketEditUrl(payload) {
         ...payload,
         scope: 'poe2-market-edit'
     }, MARKET_EDIT_LINK_TTL_MS);
+}
+
+export function buildArkEditUrl(payload) {
+    return buildSignedWebUrl('/ark-edit/', {
+        ...payload,
+        scope: 'ark-edit'
+    }, ARK_EDIT_LINK_TTL_MS);
 }
 
 export function verifyActWebToken(token, requiredScope = '') {

@@ -5,11 +5,13 @@ import { lolChampionCommand } from './lol-champion.js';
 import { owCommand } from './ow.js';
 import { owHeroCommand } from './ow-hero.js';
 import { ff14ActCommand, owActCommand, lolActCommand } from './act.js';
-import { arkJoinCommand, arkSettingsCommand, arkStatusCommand } from './ark.js';
+import { arkEditCommand, arkJoinCommand, arkRebootCommand, arkSettingsCommand, arkStatusCommand } from './ark.js';
 import { poe2MarketCommand, poe2MarketEditCommand } from './poe2.js';
 
 const commands = [
+    arkEditCommand.toJSON(),
     arkJoinCommand.toJSON(),
+    arkRebootCommand.toJSON(),
     arkStatusCommand.toJSON(),
     arkSettingsCommand.toJSON(),
     lolCommand.toJSON(),

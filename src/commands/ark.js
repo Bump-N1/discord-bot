@@ -1,4 +1,17 @@
-import { EmbedBuilder, SlashCommandBuilder } from 'discord.js';
+import {
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    EmbedBuilder,
+    MessageFlags,
+    SlashCommandBuilder
+} from 'discord.js';
+import { buildArkEditUrl } from '../services/act/act-web-auth.js';
+import { registerEphemeralWebReply } from '../services/act/ephemeral-web-link.js';
+import {
+    buildArkRebootNotificationMessage,
+    requestArkReboot
+} from '../services/ark/ark-edit-service.js';
 import {
     formatStateLabel,
     getArkJoinInfo,
@@ -9,9 +22,17 @@ import {
 const ARK_COLOR = 0x2DAA8A;
 const EMPTY_VALUE = '未取得';
 
+export const arkEditCommand = new SlashCommandBuilder()
+    .setName('ark-edit')
+    .setDescription('ARKサーバーのMAPとMODをWeb画面で編集します');
+
 export const arkJoinCommand = new SlashCommandBuilder()
     .setName('ark-join')
-    .setDescription('ARKサーバーの参加方法を表示します');
+    .setDescription('ARKサーバーへの参加方法を表示します');
+
+export const arkRebootCommand = new SlashCommandBuilder()
+    .setName('ark-reboot')
+    .setDescription('ARKサーバーを再起動します');
 
 export const arkStatusCommand = new SlashCommandBuilder()
     .setName('ark-status')
@@ -20,6 +41,64 @@ export const arkStatusCommand = new SlashCommandBuilder()
 export const arkSettingsCommand = new SlashCommandBuilder()
     .setName('ark-settings')
     .setDescription('ARKサーバーの設定を表示します');
+
+export async function handleArkEditCommand(interaction) {
+    if (!interaction.guildId) {
+        await interaction.reply({
+            content: 'このコマンドはDiscordサーバー内で実行してください。',
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+
+    try {
+        const url = buildArkEditUrl({
+            guildId: interaction.guildId,
+            channelId: interaction.channelId,
+            userId: interaction.user.id,
+            displayName: interaction.member?.displayName || interaction.user.displayName || interaction.user.username
+        });
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setStyle(ButtonStyle.Link)
+                .setLabel('ARK設定を編集')
+                .setURL(url)
+        );
+
+        await interaction.reply({
+            content: 'ARKサーバーのMAPとMODを編集できます。保存すると、プレイヤーがいない場合のみ自動で再起動します。',
+            components: [row],
+            flags: MessageFlags.Ephemeral
+        });
+        registerEphemeralWebReply(url, interaction);
+    } catch (error) {
+        console.error('ARK edit command failed:', error);
+        await interaction.reply({
+            content: 'ARK設定編集画面を開けませんでした。Web画面の設定を確認してください。',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+}
+
+export async function handleArkRebootCommand(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const result = await requestArkReboot({
+            actorId: interaction.user.id,
+            actorName: interaction.member?.displayName || interaction.user.displayName || interaction.user.username
+        });
+
+        await interaction.editReply({
+            content: buildArkRebootNotificationMessage(result)
+        });
+    } catch (error) {
+        console.error('ARK reboot failed:', error);
+        await interaction.editReply({
+            content: 'NitradoからARKサーバーの状態を取得できなかったため、再起動を実行できませんでした。'
+        });
+    }
+}
 
 export async function handleArkJoinCommand(interaction) {
     await interaction.deferReply();

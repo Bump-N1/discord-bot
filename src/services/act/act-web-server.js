@@ -45,11 +45,18 @@ import {
     getPoe2MarketSettings,
     savePoe2MarketSettings
 } from '../poe2/poe2-market-store.js';
+import {
+    applyArkEdit,
+    buildArkEditNotificationMessages,
+    getArkEditSession
+} from '../ark/ark-edit-service.js';
 
 const WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'act');
 const POE2_WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'poe2-market');
+const ARK_WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'ark-edit');
 const ASSET_ROOT = path.resolve(process.cwd(), 'assets');
 const completedCreateTokens = new Set();
+const completedArkEditTokens = new Set();
 const poe2IconCache = new Map();
 
 export function startActWebServer(client) {
@@ -103,6 +110,16 @@ async function handleRequest(client, request, response) {
         return;
     }
 
+    if (request.method === 'GET' && (url.pathname === '/ark-edit' || url.pathname === '/ark-edit/')) {
+        await sendFile(response, path.join(ARK_WEB_ROOT, 'index.html'), 'text/html; charset=utf-8');
+        return;
+    }
+
+    if (request.method === 'GET' && url.pathname.startsWith('/ark-edit/')) {
+        await serveArkEditStaticFile(url.pathname, response);
+        return;
+    }
+
     if (request.method === 'GET' && url.pathname.startsWith('/assets/')) {
         await serveAssetFile(url.pathname, response);
         return;
@@ -130,6 +147,16 @@ async function handleRequest(client, request, response) {
 
     if (request.method === 'POST' && url.pathname === '/api/poe2-market/settings') {
         await handlePoe2MarketSettingsRequest(request, response);
+        return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/ark-edit/session') {
+        await handleArkEditSessionRequest(url, response);
+        return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/ark-edit/save') {
+        await handleArkEditSaveRequest(client, request, response);
         return;
     }
 
@@ -244,6 +271,73 @@ async function handlePoe2MarketIconRequest(url, response) {
     } catch (error) {
         sendJson(response, 404, {
             error: error.message
+        });
+    }
+}
+
+async function handleArkEditSessionRequest(url, response) {
+    try {
+        const payload = verifyActWebToken(url.searchParams.get('token'), 'ark-edit');
+        const session = await getArkEditSession();
+
+        sendJson(response, 200, {
+            actorName: payload.displayName,
+            ...session
+        });
+    } catch (error) {
+        sendJson(response, 400, {
+            error: error.message
+        });
+    }
+}
+
+async function handleArkEditSaveRequest(client, request, response) {
+    try {
+        const body = await readJsonBody(request);
+        const token = String(body.token || '');
+
+        if (completedArkEditTokens.has(token)) {
+            throw new Error('この画面では既に保存済みです。Discordからもう一度開いてください。');
+        }
+
+        const payload = verifyActWebToken(token, 'ark-edit');
+        const result = await applyArkEdit({
+            map: body.map,
+            activeMods: body.activeMods,
+            actorId: payload.userId,
+            actorName: payload.displayName
+        });
+
+        if (!result.changed) {
+            throw new Error(result.message || '変更内容がありません。');
+        }
+
+        completedArkEditTokens.add(token);
+        await postArkEditNotifications(client, payload.channelId, result);
+
+        sendJson(response, 200, {
+            ok: true,
+            result: result
+        });
+    } catch (error) {
+        sendJson(response, 400, {
+            error: error.message
+        });
+    }
+}
+
+async function postArkEditNotifications(client, channelId, result) {
+    const channel = await client.channels.fetch(channelId);
+
+    if (!channel?.isTextBased()) {
+        throw new Error('Discordの投稿先チャンネルを取得できませんでした。');
+    }
+
+    const messages = buildArkEditNotificationMessages(result);
+
+    for (const message of messages) {
+        await channel.send({
+            content: message
         });
     }
 }
@@ -585,6 +679,23 @@ async function servePoe2MarketStaticFile(urlPath, response) {
     }
 
     await sendFile(response, path.join(POE2_WEB_ROOT, fileName), safeFileNames[fileName]);
+}
+
+async function serveArkEditStaticFile(urlPath, response) {
+    const fileName = urlPath.slice('/ark-edit/'.length);
+    const safeFileNames = {
+        'app.css': 'text/css; charset=utf-8',
+        'app.js': 'text/javascript; charset=utf-8'
+    };
+
+    if (!safeFileNames[fileName]) {
+        sendJson(response, 404, {
+            error: 'ページが見つかりません。'
+        });
+        return;
+    }
+
+    await sendFile(response, path.join(ARK_WEB_ROOT, fileName), safeFileNames[fileName]);
 }
 
 async function serveAssetFile(urlPath, response) {

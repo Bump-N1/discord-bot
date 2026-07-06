@@ -5,6 +5,19 @@ const CONFIG_DIRECTORY_PATTERN = /\/Config\/WindowsServer\/?$/iu;
 const GAME_INI_FILE = 'Game.ini';
 const GAME_USER_SETTINGS_FILE = 'GameUserSettings.ini';
 const SERVER_PROBE_TIMEOUT_MS = 4000;
+const MAP_LABELS = {
+    TheIsland_WP: 'The Island',
+    ScorchedEarth_WP: 'Scorched Earth',
+    TheCenter_WP: 'The Center',
+    Aberration_WP: 'Aberration',
+    Extinction_WP: 'Extinction',
+    Ragnarok_WP: 'Ragnarok',
+    AstraeosDLC: 'Astraeos',
+    Valguero_WP: 'Valguero',
+    LostColonyDLC: 'Lost Colony',
+    GenesisDLC: 'Genesis 1',
+    Astraeos: 'Astraeos (Mod map)'
+};
 
 export async function fetchNitradoGameServer(config) {
     if (!config.nitradoToken || !config.nitradoServiceId) {
@@ -60,6 +73,82 @@ export async function fetchNitradoRestartSchedule(config) {
     }
 
     return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+export async function fetchNitradoServerConfig(config) {
+    const gameServer = await fetchNitradoGameServer(config);
+
+    return normalizeNitradoServerConfig(gameServer);
+}
+
+export async function updateNitradoServerConfig(config, settings) {
+    assertNitradoConfig(config);
+
+    if (Object.prototype.hasOwnProperty.call(settings, 'map')) {
+        await updateNitradoSetting(config, 'config', 'map', settings.map);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(settings, 'activeMods')) {
+        await updateNitradoSetting(config, 'config', 'active-mods', settings.activeMods.join(','));
+    }
+}
+
+export async function restartNitradoServer(config) {
+    assertNitradoConfig(config);
+    await postNitradoJson(config, '/gameservers/restart', null);
+}
+
+async function updateNitradoSetting(config, category, key, value) {
+    await postNitradoJson(config, '/gameservers/settings', {
+        category: category,
+        key: key,
+        value: String(value ?? '')
+    });
+}
+
+function normalizeNitradoServerConfig(gameServer) {
+    const map = getFirstValue(gameServer, [
+        'settings.config.map',
+        'query.map',
+        'map',
+        'game_specific.map'
+    ]);
+    const activeMods = getFirstValue(gameServer, [
+        'settings.config.active-mods',
+        'settings.config.ActiveMods',
+        'game_specific.active-mods'
+    ]);
+    const playerCount = getFirstNumber(gameServer, [
+        'query.player_current',
+        'query.players',
+        'players',
+        'player_current',
+        'online_players',
+        'game_specific.online_players'
+    ]);
+    const maxPlayers = getFirstNumber(gameServer, [
+        'query.player_max',
+        'query.maxplayers',
+        'slots',
+        'max_players',
+        'game_specific.max_players'
+    ]);
+
+    return {
+        serverName: normalizeServerName(getFirstValue(gameServer, [
+            'query.server_name',
+            'settings.config.hostname',
+            'settings.config.server-name',
+            'settings.config.server_name',
+            'query.name',
+            'name'
+        ])),
+        map: map,
+        mapLabel: normalizeMapName(map),
+        activeMods: parseModIds(activeMods),
+        playerCount: Number.isFinite(playerCount) ? playerCount : null,
+        maxPlayers: Number.isFinite(maxPlayers) ? maxPlayers : null
+    };
 }
 
 function normalizeNitradoStatus(gameServer, state) {
@@ -266,6 +355,61 @@ async function fetchNitradoJson(config, path, query = {}) {
     return await response.json();
 }
 
+async function postNitradoJson(config, path, body) {
+    const url = new URL(`${NITRADO_API_BASE_URL}/services/${config.nitradoServiceId}${path}`);
+    const attempts = body === null
+        ? [{
+            headers: {},
+            body: undefined
+        }]
+        : [{
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        }, {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams(body).toString()
+        }];
+    let lastError = '';
+
+    for (const attempt of attempts) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${config.nitradoToken}`,
+                'User-Agent': 'discord-bot/1.0',
+                ...attempt.headers
+            },
+            body: attempt.body
+        });
+        const responseText = await response.text();
+
+        if (response.ok) {
+            if (!responseText) {
+                return {};
+            }
+
+            try {
+                return JSON.parse(responseText);
+            } catch (error) {
+                return {};
+            }
+        }
+
+        lastError = `Nitrado API error: ${response.status} ${responseText}`;
+
+        if (![400, 415, 422].includes(response.status)) {
+            break;
+        }
+    }
+
+    throw new Error(lastError || 'Nitrado API error');
+}
+
 function parseIni(content) {
     const values = {};
 
@@ -296,6 +440,17 @@ function getIniValue(values, key) {
     return values?.[key.toLowerCase()] || '';
 }
 
+function parseModIds(value) {
+    return String(value || '')
+        .split(',')
+        .map(function(modId) {
+            return modId.trim();
+        })
+        .filter(function(modId) {
+            return /^\d+$/u.test(modId);
+        });
+}
+
 function getServerAddress(gameServer) {
     const ip = getFirstValue(gameServer, [
         'ip',
@@ -317,7 +472,9 @@ function getServerAddress(gameServer) {
 }
 
 function normalizeMapName(value) {
-    return String(value || '').replace(/_WP$/u, '').trim();
+    const mapValue = String(value || '').trim();
+
+    return MAP_LABELS[mapValue] || mapValue.replace(/_WP$/u, '').trim();
 }
 
 function normalizeServerName(value) {

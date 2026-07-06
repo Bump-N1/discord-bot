@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ARK設定編集</title>
+    <link rel="stylesheet" href="/ark-edit/app.css">
+</head>
+<body>
+    <main class="page">
+        <section id="loadingView" class="panel state-panel">
+            <p class="eyebrow">ARK</p>
+            <h1>設定を読み込んでいます</h1>
+        </section>
+
+        <section id="errorView" class="panel state-panel hidden">
+            <p class="eyebrow">ARK</p>
+            <h1>開けませんでした</h1>
+            <p id="errorText" class="muted"></p>
+        </section>
+
+        <section id="completeView" class="panel state-panel hidden">
+            <p class="eyebrow">ARK</p>
+            <h1>変更を保存しました</h1>
+            <p class="muted">この画面は閉じてください。</p>
+            <div id="completeSummary" class="complete-summary"></div>
+        </section>
+
+        <form id="settingsForm" class="hidden">
+            <header class="page-header">
+                <div>
+                    <p class="eyebrow">ARK</p>
+                    <h1>サーバー設定</h1>
+                </div>
+                <div class="status-stack">
+                    <span id="serverName" class="badge"></span>
+                    <span id="playerCount" class="badge"></span>
+                </div>
+            </header>
+
+            <section class="panel">
+                <div class="section-header">
+                    <div>
+                        <h2>MAP</h2>
+                        <p id="currentMapText" class="muted"></p>
+                    </div>
+                </div>
+                <label class="field">
+                    <span>変更先MAP</span>
+                    <select id="mapSelect"></select>
+                </label>
+            </section>
+
+            <section class="panel">
+                <div class="section-header">
+                    <div>
+                        <h2>CurseForge MOD</h2>
+                        <p class="muted">MOD IDを追加・削除できます。</p>
+                    </div>
+                    <span id="modCount" class="count"></span>
+                </div>
+
+                <div class="mod-add-row">
+                    <input id="modInput" type="text" inputmode="numeric" placeholder="MOD IDを入力">
+                    <button id="addModButton" type="button" class="secondary-button">追加</button>
+                </div>
+
+                <div id="modList" class="mod-list"></div>
+            </section>
+
+            <section class="actions">
+                <button id="saveButton" type="submit" class="primary-button">変更を保存</button>
+                <p id="notice" class="notice"></p>
+            </section>
+
+            <section class="panel">
+                <div class="section-header">
+                    <h2>変更履歴</h2>
+                </div>
+                <div id="historyList" class="history-list"></div>
+            </section>
+        </form>
+    </main>
+
+    <script src="/ark-edit/app.js" type="module"></script>
+</body>
+</html>
