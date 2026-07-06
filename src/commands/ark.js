@@ -170,7 +170,7 @@ function buildArkStatusEmbed(status) {
         `サーバー名：${status.serverName}`,
         `マップ：${status.map}`,
         `人数：${playerText}`,
-        `状態：${formatStateLabel(status.state)}`,
+        `状態：${status.nitradoStatus === 'stopped' ? '停止中' : formatStateLabel(status.state)}`,
         `IP：${status.address}`
     ];
 
