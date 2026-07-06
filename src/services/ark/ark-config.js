@@ -10,6 +10,7 @@ export function getArkConfig() {
         notifyChannelId: getEnv('ARK_NOTIFY_CHANNEL_ID', ''),
         nitradoToken: getEnv('NITRADO_TOKEN', ''),
         nitradoServiceId: getEnv('NITRADO_SERVICE_ID', ''),
+        serverName: getEnv('ARK_SERVER_NAME', ''),
         mapOptions: getMapOptions()
     };
 }

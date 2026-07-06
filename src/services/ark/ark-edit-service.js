@@ -3,6 +3,7 @@ import { addArkEditHistory, getArkEditHistory } from './ark-edit-store.js';
 import {
     fetchNitradoServerConfig,
     restartNitradoServer,
+    startNitradoServer,
     updateNitradoServerConfig
 } from './nitrado-client.js';
 
@@ -62,7 +63,7 @@ export async function applyArkEdit(options) {
 
     await updateNitradoServerConfig(config, updates);
 
-    const reboot = await rebootIfEmpty(config, current.playerCount);
+    const reboot = await rebootIfEmpty(config, current);
     const result = {
         changed: true,
         actorId: options.actorId,
@@ -102,7 +103,7 @@ export async function applyArkEdit(options) {
 export async function requestArkReboot(options) {
     const config = getArkConfig();
     const current = await fetchNitradoServerConfig(config);
-    const reboot = await rebootIfEmpty(config, current.playerCount);
+    const reboot = await rebootIfEmpty(config, current);
 
     return {
         actorId: options.actorId,
@@ -204,7 +205,24 @@ function difference(left, right) {
     });
 }
 
-async function rebootIfEmpty(config, playerCount) {
+async function rebootIfEmpty(config, current) {
+    const playerCount = current.playerCount;
+
+    if (isStoppedServer(current.status)) {
+        try {
+            await startNitradoServer(config);
+
+            return {
+                status: 'started'
+            };
+        } catch (error) {
+            return {
+                status: 'failed',
+                message: error.message
+            };
+        }
+    }
+
     if (playerCount !== 0) {
         return {
             status: playerCount === null ? 'skipped_unknown_players' : 'skipped_players'
@@ -225,6 +243,10 @@ async function rebootIfEmpty(config, playerCount) {
     }
 }
 
+function isStoppedServer(status) {
+    return ['stopped'].includes(String(status || '').toLowerCase());
+}
+
 function formatActor(actorId, actorName) {
     return actorId ? `<@${actorId}>` : `@${actorName || 'ユーザー'}`;
 }
@@ -232,6 +254,10 @@ function formatActor(actorId, actorName) {
 function buildConfigRebootNotice(reboot) {
     if (reboot.status === 'restarted') {
         return '設定を反映する為、サーバーを再起動します。';
+    }
+
+    if (reboot.status === 'started') {
+        return 'サーバーが停止中だったため、設定を反映する為に起動します。';
     }
 
     if (reboot.status === 'skipped_players') {
@@ -257,6 +283,10 @@ function buildConfigRebootNotice(reboot) {
 function buildManualRebootNotice(reboot) {
     if (reboot.status === 'restarted') {
         return 'サーバーを再起動します。';
+    }
+
+    if (reboot.status === 'started') {
+        return 'サーバーが停止中だったため、起動します。';
     }
 
     if (reboot.status === 'skipped_players') {

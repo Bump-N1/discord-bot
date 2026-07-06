@@ -5,6 +5,7 @@ const CONFIG_DIRECTORY_PATTERN = /\/Config\/WindowsServer\/?$/iu;
 const GAME_INI_FILE = 'Game.ini';
 const GAME_USER_SETTINGS_FILE = 'GameUserSettings.ini';
 const SERVER_PROBE_TIMEOUT_MS = 4000;
+const DEFAULT_NITRADO_SERVER_NAME = 'nitrado.net Gameserver';
 const MAP_LABELS = {
     TheIsland_WP: 'The Island',
     ScorchedEarth_WP: 'Scorched Earth',
@@ -30,18 +31,24 @@ export async function fetchNitradoGameServer(config) {
 }
 
 export async function fetchNitradoServerStatus(config) {
-    const gameServer = await fetchNitradoGameServer(config);
+    const [gameServer, settingsConfig] = await Promise.all([
+        fetchNitradoGameServer(config),
+        fetchOptionalNitradoSettingsConfig(config)
+    ]);
     const state = await probeArkServer(gameServer);
 
-    return normalizeNitradoStatus(gameServer, state);
+    return normalizeNitradoStatus(gameServer, state, settingsConfig, config.serverName);
 }
 
 export async function fetchNitradoJoinInfo(config) {
-    const gameServer = await fetchNitradoGameServer(config);
-    const files = await fetchNitradoConfigFiles(config, [GAME_USER_SETTINGS_FILE]);
+    const [gameServer, settingsConfig, files] = await Promise.all([
+        fetchNitradoGameServer(config),
+        fetchOptionalNitradoSettingsConfig(config),
+        fetchNitradoConfigFiles(config, [GAME_USER_SETTINGS_FILE])
+    ]);
     const gameUserSettings = parseIni(files[GAME_USER_SETTINGS_FILE]);
 
-    return normalizeNitradoJoinInfo(gameServer, gameUserSettings);
+    return normalizeNitradoJoinInfo(gameServer, gameUserSettings, settingsConfig, config.serverName);
 }
 
 export async function fetchNitradoSettings(config) {
@@ -76,26 +83,43 @@ export async function fetchNitradoRestartSchedule(config) {
 }
 
 export async function fetchNitradoServerConfig(config) {
-    const gameServer = await fetchNitradoGameServer(config);
+    const [gameServer, settingsConfig] = await Promise.all([
+        fetchNitradoGameServer(config),
+        fetchNitradoSettingsConfig(config)
+    ]);
 
-    return normalizeNitradoServerConfig(gameServer);
+    return normalizeNitradoServerConfig(gameServer, settingsConfig, config.serverName);
 }
 
 export async function updateNitradoServerConfig(config, settings) {
     assertNitradoConfig(config);
+    const currentSettings = await fetchNitradoSettingsConfig(config);
+    const serverName = firstText(config.serverName, getConfiguredServerName(currentSettings));
+    let updated = false;
 
     if (Object.prototype.hasOwnProperty.call(settings, 'map')) {
         await updateNitradoSetting(config, 'config', 'map', settings.map);
+        updated = true;
     }
 
     if (Object.prototype.hasOwnProperty.call(settings, 'activeMods')) {
         await updateNitradoSetting(config, 'config', 'active-mods', settings.activeMods.join(','));
+        updated = true;
+    }
+
+    if (updated && isCustomServerName(serverName)) {
+        await updateNitradoSetting(config, 'config', 'server-name', serverName);
     }
 }
 
 export async function restartNitradoServer(config) {
     assertNitradoConfig(config);
     await postNitradoJson(config, '/gameservers/restart', null);
+}
+
+export async function startNitradoServer(config) {
+    assertNitradoConfig(config);
+    await postNitradoJson(config, '/gameservers/start', null);
 }
 
 async function updateNitradoSetting(config, category, key, value) {
@@ -106,18 +130,33 @@ async function updateNitradoSetting(config, category, key, value) {
     });
 }
 
-function normalizeNitradoServerConfig(gameServer) {
-    const map = getFirstValue(gameServer, [
+async function fetchNitradoSettingsConfig(config) {
+    assertNitradoConfig(config);
+    const data = await fetchNitradoJson(config, '/gameservers/settings');
+
+    return data?.data?.settings?.config || {};
+}
+
+async function fetchOptionalNitradoSettingsConfig(config) {
+    try {
+        return await fetchNitradoSettingsConfig(config);
+    } catch (error) {
+        return {};
+    }
+}
+
+function normalizeNitradoServerConfig(gameServer, settingsConfig = {}, fallbackServerName = '') {
+    const map = firstText(settingsConfig.map, getFirstValue(gameServer, [
         'settings.config.map',
         'query.map',
         'map',
         'game_specific.map'
-    ]);
-    const activeMods = getFirstValue(gameServer, [
+    ]));
+    const activeMods = firstText(settingsConfig['active-mods'], getFirstValue(gameServer, [
         'settings.config.active-mods',
         'settings.config.ActiveMods',
         'game_specific.active-mods'
-    ]);
+    ]));
     const playerCount = getFirstNumber(gameServer, [
         'query.player_current',
         'query.players',
@@ -135,23 +174,17 @@ function normalizeNitradoServerConfig(gameServer) {
     ]);
 
     return {
-        serverName: normalizeServerName(getFirstValue(gameServer, [
-            'query.server_name',
-            'settings.config.hostname',
-            'settings.config.server-name',
-            'settings.config.server_name',
-            'query.name',
-            'name'
-        ])),
+        serverName: getDisplayServerName(settingsConfig, gameServer, fallbackServerName),
         map: map,
         mapLabel: normalizeMapName(map),
         activeMods: parseModIds(activeMods),
         playerCount: Number.isFinite(playerCount) ? playerCount : null,
-        maxPlayers: Number.isFinite(maxPlayers) ? maxPlayers : null
+        maxPlayers: Number.isFinite(maxPlayers) ? maxPlayers : null,
+        status: getFirstValue(gameServer, ['status'])
     };
 }
 
-function normalizeNitradoStatus(gameServer, state) {
+function normalizeNitradoStatus(gameServer, state, settingsConfig = {}, fallbackServerName = '') {
     const playerCount = getFirstNumber(gameServer, [
         'query.player_current',
         'query.players',
@@ -167,12 +200,17 @@ function normalizeNitradoStatus(gameServer, state) {
         'max_players',
         'game_specific.max_players'
     ]);
-    const map = normalizeMapName(getFirstValue(gameServer, [
+    const liveMap = getFirstValue(gameServer, [
         'query.map',
         'map',
-        'game_specific.map',
+        'game_specific.map'
+    ]);
+    const configuredMap = firstText(settingsConfig.map, getFirstValue(gameServer, [
         'settings.config.map'
     ]));
+    const map = normalizeMapName(state === 'online'
+        ? firstText(liveMap, configuredMap)
+        : firstText(configuredMap, liveMap));
     const ip = getFirstValue(gameServer, [
         'ip',
         'hostsystems.linux.ip',
@@ -190,18 +228,12 @@ function normalizeNitradoStatus(gameServer, state) {
     ]);
 
     return {
-        serverName: normalizeServerName(getFirstValue(gameServer, [
-            'query.server_name',
-            'settings.config.hostname',
-            'settings.config.server-name',
-            'settings.config.server_name',
-            'query.name',
-            'name'
-        ])),
+        serverName: getDisplayServerName(settingsConfig, gameServer, fallbackServerName),
         map: map,
         playerCount: Number.isFinite(playerCount) ? playerCount : null,
         maxPlayers: Number.isFinite(maxPlayers) ? maxPlayers : null,
         state: state,
+        nitradoStatus: getFirstValue(gameServer, ['status']),
         address: address,
         source: 'nitrado'
     };
@@ -255,19 +287,21 @@ async function canConnect(host, port) {
     });
 }
 
-function normalizeNitradoJoinInfo(gameServer, gameUserSettings) {
+function normalizeNitradoJoinInfo(gameServer, gameUserSettings, settingsConfig = {}, fallbackServerName = '') {
+    const liveMap = getFirstValue(gameServer, [
+        'query.map',
+        'map'
+    ]);
+    const configuredMap = firstText(settingsConfig.map, getFirstValue(gameServer, [
+        'settings.config.map'
+    ]));
+
     return {
-        serverName: normalizeServerName(firstText(getIniValue(gameUserSettings, 'SessionName'), getFirstValue(gameServer, [
-            'query.server_name',
-            'settings.config.server-name',
-            'settings.config.hostname',
-            'name'
-        ]))),
-        map: normalizeMapName(getFirstValue(gameServer, [
-            'query.map',
-            'settings.config.map',
-            'map'
-        ])),
+        serverName: firstText(
+            getDisplayServerName(settingsConfig, gameServer, fallbackServerName),
+            normalizeServerName(getIniValue(gameUserSettings, 'SessionName'))
+        ),
+        map: normalizeMapName(firstText(configuredMap, liveMap)),
         password: firstText(getIniValue(gameUserSettings, 'ServerPassword'), getFirstValue(gameServer, [
             'settings.config.server-password',
             'settings.config.password'
@@ -475,6 +509,38 @@ function normalizeMapName(value) {
     const mapValue = String(value || '').trim();
 
     return MAP_LABELS[mapValue] || mapValue.replace(/_WP$/u, '').trim();
+}
+
+function getConfiguredServerName(settingsConfig) {
+    return normalizeServerName(firstText(
+        settingsConfig?.['server-name'],
+        settingsConfig?.hostname,
+        settingsConfig?.server_name
+    ));
+}
+
+function getDisplayServerName(settingsConfig, gameServer, fallbackServerName = '') {
+    const candidates = [
+        normalizeServerName(fallbackServerName),
+        getConfiguredServerName(settingsConfig),
+        normalizeServerName(getFirstValue(gameServer, [
+            'query.server_name',
+            'settings.config.hostname',
+            'settings.config.server-name',
+            'settings.config.server_name',
+            'query.name',
+            'name'
+        ]))
+    ].filter(Boolean);
+    const customName = candidates.find(isCustomServerName);
+
+    return customName || candidates[0] || '';
+}
+
+function isCustomServerName(value) {
+    const serverName = normalizeServerName(value);
+
+    return Boolean(serverName) && serverName.toLowerCase() !== DEFAULT_NITRADO_SERVER_NAME.toLowerCase();
 }
 
 function normalizeServerName(value) {
