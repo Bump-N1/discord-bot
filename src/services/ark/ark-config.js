@@ -37,16 +37,16 @@ function getMapOptions() {
     }
 
     return [
-        { value: 'TheIsland_WP', label: 'The Island' },
-        { value: 'ScorchedEarth_WP', label: 'Scorched Earth' },
-        { value: 'TheCenter_WP', label: 'The Center' },
-        { value: 'Aberration_WP', label: 'Aberration' },
-        { value: 'Extinction_WP', label: 'Extinction' },
-        { value: 'Ragnarok_WP', label: 'Ragnarok' },
-        { value: 'Astraeos_WP', label: 'Astraeos' },
-        { value: 'Valguero_WP', label: 'Valguero' },
-        { value: 'LostColony_WP', label: 'Lost Colony' },
-        { value: 'Genesis_WP', label: 'Genesis 1' }
+        { value: 'TheIsland', label: 'The Island' },
+        { value: 'ScorchedEarth', label: 'Scorched Earth' },
+        { value: 'TheCenter', label: 'The Center' },
+        { value: 'Aberration', label: 'Aberration' },
+        { value: 'Extinction', label: 'Extinction' },
+        { value: 'Ragnarok', label: 'Ragnarok' },
+        { value: 'AstraeosDLC', label: 'Astraeos' },
+        { value: 'Valguero', label: 'Valguero' },
+        { value: 'LostColony', label: 'Lost Colony' },
+        { value: 'Genesis', label: 'Genesis 1' }
     ];
 }
 

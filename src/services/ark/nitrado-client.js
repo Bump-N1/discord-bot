@@ -7,25 +7,31 @@ const GAME_USER_SETTINGS_FILE = 'GameUserSettings.ini';
 const SERVER_PROBE_TIMEOUT_MS = 4000;
 const DEFAULT_NITRADO_SERVER_NAME = 'nitrado.net Gameserver';
 const MAP_LABELS = {
+    TheIsland: 'The Island',
     TheIsland_WP: 'The Island',
+    ScorchedEarth: 'Scorched Earth',
     ScorchedEarth_WP: 'Scorched Earth',
+    TheCenter: 'The Center',
     TheCenter_WP: 'The Center',
+    Aberration: 'Aberration',
     Aberration_WP: 'Aberration',
+    Extinction: 'Extinction',
     Extinction_WP: 'Extinction',
+    Ragnarok: 'Ragnarok',
     Ragnarok_WP: 'Ragnarok',
     Astraeos_WP: 'Astraeos',
     AstraeosDLC: 'Astraeos',
+    Valguero: 'Valguero',
     Valguero_WP: 'Valguero',
     LostColony_WP: 'Lost Colony',
-    LostColonyDLC: 'Lost Colony',
+    LostColony: 'Lost Colony',
     Genesis_WP: 'Genesis 1',
-    GenesisDLC: 'Genesis 1',
+    Genesis: 'Genesis 1',
     Astraeos: 'Astraeos (Mod map)'
 };
 const MAP_ALIASES = {
-    AstraeosDLC: 'Astraeos_WP',
-    LostColonyDLC: 'LostColony_WP',
-    GenesisDLC: 'Genesis_WP'
+    LostColonyDLC: 'LostColony',
+    GenesisDLC: 'Genesis'
 };
 
 export async function fetchNitradoGameServer(config) {
@@ -127,7 +133,7 @@ export async function restartNitradoServer(config) {
 
 export async function startNitradoServer(config) {
     assertNitradoConfig(config);
-    await postNitradoJson(config, '/gameservers/start', null);
+    await postNitradoJson(config, '/gameservers/restart', null);
 }
 
 async function updateNitradoSetting(config, category, key, value) {
