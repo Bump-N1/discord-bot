@@ -1,7 +1,10 @@
+const CURSEFORGE_ARK_SEARCH_URL = 'https://www.curseforge.com/ark-survival-ascended/search?class=mods';
 const token = new URLSearchParams(window.location.search).get('token') || '';
 const state = {
     session: null,
-    mods: []
+    mods: [],
+    modDetails: new Map(),
+    pendingRemoveModId: ''
 };
 
 const elements = {
@@ -19,9 +22,14 @@ const elements = {
     addModButton: document.querySelector('#addModButton'),
     modCount: document.querySelector('#modCount'),
     modList: document.querySelector('#modList'),
+    modCatalogLink: document.querySelector('#modCatalogLink'),
     saveButton: document.querySelector('#saveButton'),
     notice: document.querySelector('#notice'),
-    historyList: document.querySelector('#historyList')
+    historyList: document.querySelector('#historyList'),
+    removeModDialog: document.querySelector('#removeModDialog'),
+    removeModText: document.querySelector('#removeModText'),
+    cancelRemoveButton: document.querySelector('#cancelRemoveButton'),
+    confirmRemoveButton: document.querySelector('#confirmRemoveButton')
 };
 
 boot();
@@ -35,6 +43,13 @@ async function boot() {
             addModsFromInput();
         }
     });
+    elements.cancelRemoveButton.addEventListener('click', closeRemoveModDialog);
+    elements.confirmRemoveButton.addEventListener('click', confirmRemoveMod);
+    elements.removeModDialog.addEventListener('click', function(event) {
+        if (event.target === elements.removeModDialog) {
+            closeRemoveModDialog();
+        }
+    });
 
     if (!token) {
         showFatalError('リンクが正しくありません。Discordから開き直してください。');
@@ -44,6 +59,10 @@ async function boot() {
     try {
         state.session = await request(`/api/ark-edit/session?token=${encodeURIComponent(token)}`);
         state.mods = [...state.session.server.activeMods];
+        state.modDetails = new Map((state.session.server.modDetails || []).map(function(detail) {
+            return [String(detail.id), detail];
+        }));
+        ensureFallbackModDetails(state.mods);
         clearLinkMessage();
         render();
     } catch (error) {
@@ -69,6 +88,7 @@ function render() {
     elements.serverName.textContent = state.session.server.name || 'ARK Server';
     elements.playerCount.textContent = formatPlayers(state.session.server);
     elements.currentMapText.textContent = `現在：${state.session.server.mapLabel}`;
+    elements.modCatalogLink.href = state.session.curseForgeModsUrl || 'https://www.curseforge.com/ark-survival-ascended/search?class=mods';
     renderMapOptions();
     renderMods();
     renderHistory();
@@ -101,23 +121,41 @@ function renderMods() {
     }
 
     for (const modId of state.mods) {
+        const detail = getModDetail(modId);
         const item = document.createElement('div');
+        const main = document.createElement('div');
         const id = document.createElement('span');
+        const name = document.createElement('span');
+        const actions = document.createElement('div');
+        const link = document.createElement('a');
         const button = document.createElement('button');
 
         item.className = 'mod-item';
+        main.className = 'mod-main';
         id.className = 'mod-id';
-        id.textContent = modId;
+        id.textContent = `MOD ${modId}`;
+        name.className = 'mod-name';
+        name.textContent = detail.name || '名称未取得';
+        main.append(id, name);
+
+        actions.className = 'mod-actions';
+        link.className = 'icon-link';
+        link.href = detail.url;
+        link.target = '_blank';
+        link.rel = 'noreferrer';
+        link.title = `${getModDisplayName(modId)}を別タブで開く`;
+        link.setAttribute('aria-label', link.title);
+        link.textContent = '↗';
+
         button.type = 'button';
         button.className = 'remove-button';
         button.textContent = '削除';
         button.addEventListener('click', function() {
-            state.mods = state.mods.filter(function(value) {
-                return value !== modId;
-            });
-            renderMods();
+            openRemoveModDialog(modId);
         });
-        item.append(id, button);
+
+        actions.append(link, button);
+        item.append(main, actions);
         elements.modList.append(item);
     }
 }
@@ -158,8 +196,46 @@ function addModsFromInput() {
     }
 
     state.mods = Array.from(new Set([...state.mods, ...modIds]));
+    ensureFallbackModDetails(modIds);
     elements.modInput.value = '';
     showNotice('');
+    renderMods();
+}
+
+function openRemoveModDialog(modId) {
+    state.pendingRemoveModId = modId;
+    elements.removeModText.textContent = `MOD：${formatModForConfirm(modId)}を削除しますか？`;
+
+    if (typeof elements.removeModDialog.showModal === 'function') {
+        elements.removeModDialog.showModal();
+        return;
+    }
+
+    if (window.confirm(elements.removeModText.textContent)) {
+        confirmRemoveMod();
+    }
+}
+
+function closeRemoveModDialog() {
+    state.pendingRemoveModId = '';
+
+    if (elements.removeModDialog.open) {
+        elements.removeModDialog.close();
+    }
+}
+
+function confirmRemoveMod() {
+    const modId = state.pendingRemoveModId;
+
+    if (!modId) {
+        closeRemoveModDialog();
+        return;
+    }
+
+    state.mods = state.mods.filter(function(value) {
+        return value !== modId;
+    });
+    closeRemoveModDialog();
     renderMods();
 }
 
@@ -217,10 +293,12 @@ function buildResultLines(result) {
 
     if (result.reboot.status === 'restarted') {
         lines.push('サーバーを再起動します。');
+    } else if (result.reboot.status === 'started') {
+        lines.push('サーバーが停止中だった為、起動します。');
     } else if (result.reboot.status === 'skipped_players') {
-        lines.push('プレイヤーがいるため、再起動は行われません。');
+        lines.push('プレイヤーがいる為、再起動は行われません。');
     } else if (result.reboot.status === 'skipped_unknown_players') {
-        lines.push('プレイヤー数を確認できないため、再起動は行われません。');
+        lines.push('プレイヤー数を確認できない為、再起動は行われません。');
     } else {
         lines.push('設定は保存されましたが、再起動に失敗しました。');
     }
@@ -258,15 +336,14 @@ function buildHistoryText(entry) {
 }
 
 function formatPlayers(server) {
-    if (server.playerCount === null || server.playerCount === undefined) {
-        return '人数：?';
-    }
+    const current = server.playerCount === null || server.playerCount === undefined
+        ? '?'
+        : String(server.playerCount);
+    const max = server.maxPlayers === null || server.maxPlayers === undefined
+        ? '?'
+        : String(server.maxPlayers);
 
-    if (server.maxPlayers === null || server.maxPlayers === undefined) {
-        return `人数：${server.playerCount}`;
-    }
-
-    return `人数：${server.playerCount} / ${server.maxPlayers}`;
+    return `人数：${current} / ${max}`;
 }
 
 function formatDateTime(value) {
@@ -282,6 +359,42 @@ function formatDateTime(value) {
         hour: '2-digit',
         minute: '2-digit'
     }).format(date);
+}
+
+function ensureFallbackModDetails(modIds) {
+    for (const modId of modIds) {
+        if (!state.modDetails.has(modId)) {
+            state.modDetails.set(modId, {
+                id: modId,
+                name: '',
+                url: buildFallbackModUrl(modId)
+            });
+        }
+    }
+}
+
+function getModDetail(modId) {
+    return state.modDetails.get(modId) || {
+        id: modId,
+        name: '',
+        url: buildFallbackModUrl(modId)
+    };
+}
+
+function buildFallbackModUrl(modId) {
+    return `${CURSEFORGE_ARK_SEARCH_URL}&search=${encodeURIComponent(modId)}`;
+}
+
+function getModDisplayName(modId) {
+    const detail = getModDetail(modId);
+
+    return detail.name ? `${modId}（${detail.name}）` : modId;
+}
+
+function formatModForConfirm(modId) {
+    const detail = getModDetail(modId);
+
+    return detail.name ? `${modId}（${detail.name}）` : modId;
 }
 
 function showNotice(message, isError = false) {

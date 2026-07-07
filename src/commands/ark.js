@@ -40,7 +40,7 @@ export const arkStatusCommand = new SlashCommandBuilder()
 
 export const arkSettingsCommand = new SlashCommandBuilder()
     .setName('ark-settings')
-    .setDescription('ARKサーバーの設定を表示します');
+    .setDescription('ARKサーバー設定を表示します');
 
 export async function handleArkEditCommand(interaction) {
     if (!interaction.guildId) {
@@ -74,7 +74,7 @@ export async function handleArkEditCommand(interaction) {
     } catch (error) {
         console.error('ARK edit command failed:', error);
         await interaction.reply({
-            content: 'ARK設定編集画面を開けませんでした。Web画面の設定を確認してください。',
+            content: 'ARK設定の編集画面を開けませんでした。Web画面の設定を確認してください。',
             flags: MessageFlags.Ephemeral
         });
     }
@@ -143,76 +143,84 @@ export async function handleArkSettingsCommand(interaction) {
 }
 
 function buildArkJoinEmbed(config) {
-    const description = [
-        '【サーバー情報】',
-        `サーバー名：${formatValue(config.serverName)}`,
-        `マップ：${formatValue(config.map)}`,
-        `パスワード：${formatValue(config.password)}`,
-        '',
-        '【参加手順】',
-        '1. 一覧から「非公式」を選択',
-        '2. 「パスワードありのサーバーを表示」にチェック',
-        `3. 検索欄に「${formatValue(config.serverName)}」と入力`,
+    const steps = [
+        '1. サーバー一覧から「非公式」を選択',
+        '2. 「パスワードありのサーバーを表示」をON',
+        `3. 検索欄に「${formatValue(config.serverName)}」を入力`,
         '4. サーバーを選択して右下の「開始」を押す'
     ];
 
     return new EmbedBuilder()
         .setTitle('ARK 参加方法')
         .setColor(ARK_COLOR)
-        .setDescription(description.join('\n'));
+        .addFields(
+            { name: 'サーバー名', value: formatValue(config.serverName), inline: true },
+            { name: 'マップ', value: formatValue(config.map), inline: true },
+            { name: 'パスワード', value: formatValue(config.password), inline: true },
+            { name: '手順', value: steps.join('\n'), inline: false }
+        );
 }
 
 function buildArkStatusEmbed(status) {
-    const playerText = status.playerCount === null
-        ? `? / ${status.maxPlayers}`
-        : `${status.playerCount} / ${status.maxPlayers}`;
-    const description = [
-        `サーバー名：${status.serverName}`,
-        `マップ：${status.map}`,
-        `人数：${playerText}`,
-        `状態：${status.nitradoStatus === 'stopped' ? '停止中' : formatStateLabel(status.state)}`,
-        `IP：${status.address}`
-    ];
+    const stateText = status.nitradoStatus === 'stopped'
+        ? '⏸️ 停止中'
+        : formatStateLabel(status.state);
 
     return new EmbedBuilder()
-        .setTitle('ARK ASA Server Status')
+        .setTitle('ARK サーバーステータス')
         .setColor(ARK_COLOR)
-        .setDescription(description.join('\n'))
+        .addFields(
+            { name: 'サーバー名', value: formatValue(status.serverName), inline: true },
+            { name: 'マップ', value: formatValue(status.map), inline: true },
+            { name: '人数', value: formatPlayers(status), inline: true },
+            { name: '状態', value: stateText, inline: true },
+            { name: '接続先', value: formatValue(status.address), inline: true }
+        )
         .setTimestamp();
 }
 
 function buildArkSettingsEmbed(config) {
     const settings = config.settings;
     const differences = config.differences || [];
-    const description = [
-        `経験値：${formatValue(settings.experience)}`,
-        `テイム：${formatValue(settings.taming)}`,
-        `採取：${formatValue(settings.harvesting)}`,
-        `孵化：${formatValue(settings.hatching)}`,
-        `成熟：${formatValue(settings.maturation)}`,
-        `重量：${formatValue(settings.weight)}`,
-        `自動保存：${formatValue(settings.autosave)}`,
-        config.restartTime ? `自動再起動：毎日 ${config.restartTime} 頃` : '自動再起動：設定なし',
-        '',
-        '【直近の変更】',
-        differences.length > 0
-            ? differences.slice(0, 3).map(formatSettingDiff).join('\n')
-            : 'まだ自動検出した設定変更はありません。'
-    ];
+    const recentChanges = differences.length > 0
+        ? differences.slice(0, 3).map(formatSettingDiff).join('\n\n').slice(0, 1024)
+        : '自動検出された変更はまだありません。';
 
     return new EmbedBuilder()
-        .setTitle('現在のARK鯖設定')
+        .setTitle('ARK サーバー設定')
         .setColor(ARK_COLOR)
-        .setDescription(description.join('\n'));
+        .addFields(
+            { name: '経験値', value: formatValue(settings.experience), inline: true },
+            { name: 'テイム', value: formatValue(settings.taming), inline: true },
+            { name: '採取', value: formatValue(settings.harvesting), inline: true },
+            { name: '孵化', value: formatValue(settings.hatching), inline: true },
+            { name: '成熟', value: formatValue(settings.maturation), inline: true },
+            { name: '重量', value: formatValue(settings.weight), inline: true },
+            { name: '自動保存', value: formatValue(settings.autosave), inline: true },
+            { name: '自動再起動', value: config.restartTime ? `毎日 ${config.restartTime} 頃` : '未設定', inline: true },
+            { name: '最近の変更', value: recentChanges, inline: false }
+        )
+        .setTimestamp();
 }
 
 function formatSettingDiff(entry) {
     const date = entry.createdAt ? formatDateTime(entry.createdAt) : '';
     const lines = (entry.changes || []).map(function(change) {
-        return `${change.label}：${change.before} -> ${change.after}`;
+        return `${change.label}: ${change.before} → ${change.after}`;
     });
 
-    return [`・${date}`, ...lines].join('\n');
+    return [`・${date}`, ...lines].filter(Boolean).join('\n');
+}
+
+function formatPlayers(status) {
+    const current = status.playerCount === null || status.playerCount === undefined
+        ? '?'
+        : String(status.playerCount);
+    const max = status.maxPlayers === null || status.maxPlayers === undefined
+        ? '?'
+        : String(status.maxPlayers);
+
+    return `${current} / ${max}`;
 }
 
 function formatDateTime(value) {
