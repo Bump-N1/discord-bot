@@ -48,7 +48,8 @@ import {
 import {
     applyArkEdit,
     buildArkEditNotificationMessages,
-    getArkEditSession
+    getArkEditSession,
+    resolveArkModDetails
 } from '../ark/ark-edit-service.js';
 import { getArkConfig } from '../ark/ark-config.js';
 
@@ -153,6 +154,11 @@ async function handleRequest(client, request, response) {
 
     if (request.method === 'GET' && url.pathname === '/api/ark-edit/session') {
         await handleArkEditSessionRequest(url, response);
+        return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/ark-edit/mod-details') {
+        await handleArkEditModDetailsRequest(request, response);
         return;
     }
 
@@ -284,6 +290,24 @@ async function handleArkEditSessionRequest(url, response) {
         sendJson(response, 200, {
             actorName: payload.displayName,
             ...session
+        });
+    } catch (error) {
+        sendJson(response, 400, {
+            error: error.message
+        });
+    }
+}
+
+async function handleArkEditModDetailsRequest(request, response) {
+    try {
+        const body = await readJsonBody(request);
+
+        verifyActWebToken(body.token, 'ark-edit');
+
+        const modDetails = await resolveArkModDetails(body.modIds);
+
+        sendJson(response, 200, {
+            modDetails: modDetails
         });
     } catch (error) {
         sendJson(response, 400, {

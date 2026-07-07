@@ -8,7 +8,8 @@ import {
 } from './nitrado-client.js';
 import {
     fetchCurseForgeModDetails,
-    getCurseForgeArkModsUrl
+    getCurseForgeArkModsUrl,
+    validateCurseForgeModDetails
 } from './curseforge-client.js';
 
 export async function getArkEditSession() {
@@ -36,6 +37,27 @@ export async function getArkEditSession() {
     };
 }
 
+export async function resolveArkModDetails(modIds) {
+    const config = getArkConfig();
+    const normalizedModIds = normalizeModIds(modIds);
+
+    if (normalizedModIds.length === 0) {
+        return [];
+    }
+
+    if (!config.curseForgeApiKey) {
+        throw new Error('CurseForge APIキーが未設定のため、MOD IDを確認できません。');
+    }
+
+    const result = await validateCurseForgeModDetails(config, normalizedModIds);
+
+    if (result.unresolvedIds.length > 0) {
+        throw new Error(`CurseForgeで確認できないMOD IDがあります：${result.unresolvedIds.join(', ')}`);
+    }
+
+    return result.details;
+}
+
 export async function applyArkEdit(options) {
     const config = getArkConfig();
     const current = await fetchNitradoServerConfig(config);
@@ -56,6 +78,10 @@ export async function applyArkEdit(options) {
             changed: false,
             message: '変更内容がありません。'
         };
+    }
+
+    if (modsChanged) {
+        await resolveArkModDetails(difference(nextMods, current.activeMods));
     }
 
     const updates = {};

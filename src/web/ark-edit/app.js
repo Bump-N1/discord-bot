@@ -26,6 +26,9 @@ const elements = {
     saveButton: document.querySelector('#saveButton'),
     notice: document.querySelector('#notice'),
     historyList: document.querySelector('#historyList'),
+    modErrorDialog: document.querySelector('#modErrorDialog'),
+    modErrorText: document.querySelector('#modErrorText'),
+    closeModErrorButton: document.querySelector('#closeModErrorButton'),
     removeModDialog: document.querySelector('#removeModDialog'),
     removeModText: document.querySelector('#removeModText'),
     cancelRemoveButton: document.querySelector('#cancelRemoveButton'),
@@ -45,6 +48,12 @@ async function boot() {
     });
     elements.cancelRemoveButton.addEventListener('click', closeRemoveModDialog);
     elements.confirmRemoveButton.addEventListener('click', confirmRemoveMod);
+    elements.closeModErrorButton.addEventListener('click', closeModErrorDialog);
+    elements.modErrorDialog.addEventListener('click', function(event) {
+        if (event.target === elements.modErrorDialog) {
+            closeModErrorDialog();
+        }
+    });
     elements.removeModDialog.addEventListener('click', function(event) {
         if (event.target === elements.removeModDialog) {
             closeRemoveModDialog();
@@ -187,19 +196,53 @@ function renderHistory() {
     }
 }
 
-function addModsFromInput() {
-    const modIds = normalizeModIds(elements.modInput.value);
+async function addModsFromInput() {
+    const parsed = parseModIdsForAdd(elements.modInput.value);
 
-    if (modIds.length === 0) {
-        showNotice('MOD IDを入力してください。', true);
+    if (parsed.invalidTokens.length > 0) {
+        showModErrorDialog(`MOD IDは数字で入力してください：${parsed.invalidTokens.join(', ')}`);
         return;
     }
 
-    state.mods = Array.from(new Set([...state.mods, ...modIds]));
-    ensureFallbackModDetails(modIds);
-    elements.modInput.value = '';
-    showNotice('');
-    renderMods();
+    if (parsed.modIds.length === 0) {
+        showModErrorDialog('MOD IDを入力してください。');
+        return;
+    }
+
+    const newModIds = parsed.modIds.filter(function(modId) {
+        return !state.mods.includes(modId);
+    });
+
+    if (newModIds.length === 0) {
+        elements.modInput.value = '';
+        showNotice('');
+        return;
+    }
+
+    setAddModLoading(true);
+
+    try {
+        const response = await request('/api/ark-edit/mod-details', {
+            method: 'POST',
+            body: {
+                token: token,
+                modIds: newModIds
+            }
+        });
+
+        for (const detail of response.modDetails || []) {
+            state.modDetails.set(String(detail.id), detail);
+        }
+
+        state.mods = Array.from(new Set([...state.mods, ...newModIds]));
+        elements.modInput.value = '';
+        showNotice('');
+        renderMods();
+    } catch (error) {
+        showModErrorDialog(error.message);
+    } finally {
+        setAddModLoading(false);
+    }
 }
 
 function openRemoveModDialog(modId) {
@@ -317,6 +360,26 @@ function normalizeModIds(value) {
         });
 }
 
+function parseModIdsForAdd(value) {
+    const tokens = String(value || '')
+        .split(/[,\s]+/u)
+        .map(function(modId) {
+            return modId.trim();
+        })
+        .filter(Boolean);
+    const invalidTokens = tokens.filter(function(modId) {
+        return !/^\d+$/u.test(modId);
+    });
+    const modIds = Array.from(new Set(tokens.filter(function(modId) {
+        return /^\d+$/u.test(modId);
+    })));
+
+    return {
+        modIds: modIds,
+        invalidTokens: invalidTokens
+    };
+}
+
 function buildHistoryText(entry) {
     const lines = [];
 
@@ -400,6 +463,28 @@ function formatModForConfirm(modId) {
 function showNotice(message, isError = false) {
     elements.notice.textContent = message;
     elements.notice.classList.toggle('error', Boolean(isError));
+}
+
+function setAddModLoading(isLoading) {
+    elements.addModButton.disabled = isLoading;
+    elements.addModButton.textContent = isLoading ? '確認中' : '追加';
+}
+
+function showModErrorDialog(message) {
+    elements.modErrorText.textContent = message;
+
+    if (typeof elements.modErrorDialog.showModal === 'function') {
+        elements.modErrorDialog.showModal();
+        return;
+    }
+
+    window.alert(message);
+}
+
+function closeModErrorDialog() {
+    if (elements.modErrorDialog.open) {
+        elements.modErrorDialog.close();
+    }
 }
 
 function showFatalError(message) {
