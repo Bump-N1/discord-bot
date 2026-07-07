@@ -6,6 +6,10 @@ import {
     startNitradoServer,
     updateNitradoServerConfig
 } from './nitrado-client.js';
+import {
+    fetchCurseForgeModDetails,
+    getCurseForgeArkModsUrl
+} from './curseforge-client.js';
 
 export async function getArkEditSession() {
     const config = getArkConfig();
@@ -14,6 +18,7 @@ export async function getArkEditSession() {
         getArkEditHistory()
     ]);
     const mapOptions = buildMapOptions(config.mapOptions, serverConfig);
+    const modDetails = await fetchCurseForgeModDetails(config, serverConfig.activeMods);
 
     return {
         server: {
@@ -21,10 +26,12 @@ export async function getArkEditSession() {
             map: serverConfig.map,
             mapLabel: getMapLabel(mapOptions, serverConfig.map),
             activeMods: serverConfig.activeMods,
+            modDetails: modDetails,
             playerCount: serverConfig.playerCount,
             maxPlayers: serverConfig.maxPlayers
         },
         mapOptions: mapOptions,
+        curseForgeModsUrl: getCurseForgeArkModsUrl(),
         history: history
     };
 }
@@ -257,7 +264,7 @@ function buildConfigRebootNotice(reboot) {
     }
 
     if (reboot.status === 'started') {
-        return 'サーバーが停止中だったため、設定を反映する為に起動します。';
+        return 'サーバーが停止中だった為、設定を反映する為に起動します。';
     }
 
     if (reboot.status === 'skipped_players') {
@@ -286,7 +293,7 @@ function buildManualRebootNotice(reboot) {
     }
 
     if (reboot.status === 'started') {
-        return 'サーバーが停止中だったため、起動します。';
+        return 'サーバーが停止中だった為、起動します。';
     }
 
     if (reboot.status === 'skipped_players') {

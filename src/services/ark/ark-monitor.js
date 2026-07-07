@@ -100,15 +100,12 @@ async function sendStateChangeNotification(client, channelId, state) {
         throw new Error('ARK_NOTIFY_CHANNEL_ID is not a text channel.');
     }
 
-    const statusText = state === 'online'
-        ? 'サーバーがオンラインになりました。'
-        : 'サーバーがオフラインになりました。';
+    const content = state === 'online'
+        ? '🟢 サーバーがオンラインになりました。'
+        : '🔴 サーバーがオフラインになりました。';
 
     await channel.send({
-        content: [
-            '【ARK鯖】',
-            statusText
-        ].join('\n')
+        content: content
     });
 }
 

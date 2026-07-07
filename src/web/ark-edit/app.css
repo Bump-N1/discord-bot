@@ -9,6 +9,7 @@
     --accent: #3fbf9f;
     --accent-strong: #34d399;
     --danger: #d94558;
+    --danger-strong: #ef5264;
     --button: #3f6ee8;
 }
 
@@ -75,6 +76,10 @@ h1 {
 
 h2 {
     font-size: 18px;
+}
+
+a {
+    color: inherit;
 }
 
 .muted,
@@ -144,35 +149,72 @@ input:focus {
 
 .mod-list {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 10px;
 }
 
 .mod-item {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
     gap: 10px;
-    min-height: 48px;
+    min-height: 58px;
     padding: 10px 12px;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--panel-strong);
 }
 
+.mod-main {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
 .mod-id {
-    font-weight: 700;
+    font-weight: 800;
     overflow-wrap: anywhere;
+}
+
+.mod-name {
+    color: var(--muted);
+    display: -webkit-box;
+    font-size: 13px;
+    line-height: 1.35;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.mod-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mod-links {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
 }
 
 .primary-button,
 .secondary-button,
-.remove-button {
-    border: 0;
+.remove-button,
+.danger-button,
+.link-button,
+.icon-link {
     border-radius: 8px;
     color: white;
     cursor: pointer;
     font-weight: 700;
+}
+
+.primary-button,
+.secondary-button,
+.remove-button,
+.danger-button {
+    border: 0;
 }
 
 .primary-button {
@@ -180,21 +222,57 @@ input:focus {
     padding: 13px 22px;
 }
 
-.secondary-button {
+.secondary-button,
+.link-button,
+.icon-link {
     background: #253244;
     border: 1px solid var(--line);
+}
+
+.secondary-button {
     padding: 0 18px;
+}
+
+.link-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0 14px;
+    text-decoration: none;
+}
+
+.icon-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    text-decoration: none;
+}
+
+.remove-button,
+.danger-button {
+    background: var(--danger);
 }
 
 .remove-button {
     flex: 0 0 auto;
-    background: var(--danger);
     padding: 8px 12px;
+}
+
+.danger-button {
+    padding: 12px 18px;
 }
 
 .primary-button:disabled {
     cursor: wait;
     opacity: 0.7;
+}
+
+.actions {
+    margin: 4px 0 28px;
 }
 
 .notice {
@@ -204,6 +282,10 @@ input:focus {
 
 .notice.error {
     color: #ff8a9a;
+}
+
+.history-panel {
+    margin-top: 0;
 }
 
 .history-list {
@@ -234,6 +316,36 @@ input:focus {
     margin-top: 18px;
 }
 
+.confirm-dialog {
+    width: min(420px, calc(100vw - 32px));
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text);
+}
+
+.confirm-dialog::backdrop {
+    background: rgb(0 0 0 / 0.64);
+}
+
+.confirm-card {
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 22px;
+}
+
+.confirm-card h2 {
+    margin-bottom: 10px;
+}
+
+.dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 22px;
+}
+
 @media (max-width: 640px) {
     .page {
         width: min(100% - 20px, 960px);
@@ -251,13 +363,34 @@ input:focus {
         justify-content: flex-start;
     }
 
-    .mod-add-row {
+    .mod-add-row,
+    .mod-list {
         grid-template-columns: 1fr;
     }
 
+    .mod-item {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .mod-links {
+        justify-content: stretch;
+    }
+
+    .link-button,
     .secondary-button,
     .primary-button {
         min-height: 48px;
+        width: 100%;
+    }
+
+    .dialog-actions {
+        flex-direction: column-reverse;
+    }
+
+    .danger-button,
+    .dialog-actions .secondary-button {
+        min-height: 48px;
+        width: 100%;
     }
 
     .notice {

@@ -46,7 +46,7 @@
                     </div>
                 </div>
                 <label class="field">
-                    <span>変更先MAP</span>
+                    <span>変更後のMAP</span>
                     <select id="mapSelect"></select>
                 </label>
             </section>
@@ -66,6 +66,12 @@
                 </div>
 
                 <div id="modList" class="mod-list"></div>
+
+                <div class="mod-links">
+                    <a id="modCatalogLink" class="link-button" href="https://www.curseforge.com/ark-survival-ascended/search?class=mods" target="_blank" rel="noreferrer">
+                        CurseForgeのMOD一覧を開く
+                    </a>
+                </div>
             </section>
 
             <section class="actions">
@@ -73,7 +79,7 @@
                 <p id="notice" class="notice"></p>
             </section>
 
-            <section class="panel">
+            <section class="panel history-panel">
                 <div class="section-header">
                     <h2>変更履歴</h2>
                 </div>
@@ -81,6 +87,18 @@
             </section>
         </form>
     </main>
+
+    <dialog id="removeModDialog" class="confirm-dialog">
+        <div class="confirm-card">
+            <p class="eyebrow">MOD削除</p>
+            <h2>このMODを削除しますか？</h2>
+            <p id="removeModText" class="muted"></p>
+            <div class="dialog-actions">
+                <button id="cancelRemoveButton" type="button" class="secondary-button">キャンセル</button>
+                <button id="confirmRemoveButton" type="button" class="danger-button">削除</button>
+            </div>
+        </div>
+    </dialog>
 
     <script src="/ark-edit/app.js" type="module"></script>
 </body>

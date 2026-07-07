@@ -50,6 +50,7 @@ import {
     buildArkEditNotificationMessages,
     getArkEditSession
 } from '../ark/ark-edit-service.js';
+import { getArkConfig } from '../ark/ark-config.js';
 
 const WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'act');
 const POE2_WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'poe2-market');
@@ -301,6 +302,7 @@ async function handleArkEditSaveRequest(client, request, response) {
         }
 
         const payload = verifyActWebToken(token, 'ark-edit');
+        const arkConfig = getArkConfig();
         const result = await applyArkEdit({
             map: body.map,
             activeMods: body.activeMods,
@@ -313,7 +315,7 @@ async function handleArkEditSaveRequest(client, request, response) {
         }
 
         completedArkEditTokens.add(token);
-        await postArkEditNotifications(client, payload.channelId, result);
+        await postArkEditNotifications(client, arkConfig.notifyChannelId || payload.channelId, result);
 
         sendJson(response, 200, {
             ok: true,

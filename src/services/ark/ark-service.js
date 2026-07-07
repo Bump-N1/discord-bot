@@ -9,13 +9,15 @@ import {
 
 export async function getArkStatus() {
     const status = await fetchNitradoServerStatus(getArkConfig());
-    assertFields(status, ['serverName', 'map', 'maxPlayers', 'state', 'address'], '状態');
+
+    assertFields(status, ['serverName', 'map', 'state', 'address'], '状態');
 
     return status;
 }
 
 export async function getArkAvailability() {
     const status = await fetchNitradoServerStatus(getArkConfig());
+
     assertFields(status, ['state'], '稼働状態');
 
     return status.state;
@@ -23,6 +25,7 @@ export async function getArkAvailability() {
 
 export async function getArkJoinInfo() {
     const info = await fetchNitradoJoinInfo(getArkConfig());
+
     assertFields(info, ['serverName', 'map', 'password'], '参加情報');
 
     return info;
@@ -56,15 +59,15 @@ export async function getArkSettings() {
 
 export function formatStateLabel(state) {
     if (state === 'online') {
-        return 'オンライン';
+        return '🟢 オンライン';
     }
 
     if (state === 'offline') {
-        return 'オフライン';
+        return '🔴 オフライン';
     }
 
     if (state === 'restarting') {
-        return '再起動中';
+        return '🔄 再起動中';
     }
 
     return '不明';
