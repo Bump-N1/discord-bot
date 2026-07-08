@@ -1,12 +1,19 @@
 export const DEFAULT_ARK_CONFIG = {
     statusPollMs: 15 * 1000,
-    configHistoryPollMs: 5 * 60 * 1000
+    configHistoryPollMs: 5 * 60 * 1000,
+    backupPollMs: 10 * 60 * 1000,
+    backupIntervalHours: 24 * 7,
+    backupRetentionCount: 5
 };
 
 export function getArkConfig() {
     return {
         statusPollMs: getEnvNumber('ARK_STATUS_POLL_MS', DEFAULT_ARK_CONFIG.statusPollMs),
         configHistoryPollMs: getEnvNumber('ARK_CONFIG_HISTORY_POLL_MS', DEFAULT_ARK_CONFIG.configHistoryPollMs),
+        backupPollMs: getEnvNumber('ARK_BACKUP_POLL_MS', DEFAULT_ARK_CONFIG.backupPollMs),
+        backupIntervalHours: getEnvNumber('ARK_BACKUP_INTERVAL_HOURS', DEFAULT_ARK_CONFIG.backupIntervalHours),
+        backupRetentionCount: getEnvNumber('ARK_BACKUP_RETENTION_COUNT', DEFAULT_ARK_CONFIG.backupRetentionCount),
+        backupDirectory: getEnv('ARK_BACKUP_DIR', 'data/ark-backups'),
         notifyChannelId: getEnv('ARK_NOTIFY_CHANNEL_ID', ''),
         nitradoToken: getEnv('NITRADO_TOKEN', ''),
         nitradoServiceId: getEnv('NITRADO_SERVICE_ID', ''),

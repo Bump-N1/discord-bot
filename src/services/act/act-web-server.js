@@ -51,14 +51,21 @@ import {
     getArkEditSession,
     resolveArkModDetails
 } from '../ark/ark-edit-service.js';
+import {
+    buildArkRestoreNotificationMessage,
+    listArkBackups,
+    restoreArkBackup
+} from '../ark/ark-backup-service.js';
 import { getArkConfig } from '../ark/ark-config.js';
 
 const WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'act');
 const POE2_WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'poe2-market');
 const ARK_WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'ark-edit');
+const ARK_BACKUP_WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'ark-backup');
 const ASSET_ROOT = path.resolve(process.cwd(), 'assets');
 const completedCreateTokens = new Set();
 const completedArkEditTokens = new Set();
+const completedArkRestoreTokens = new Set();
 const poe2IconCache = new Map();
 
 export function startActWebServer(client) {
@@ -122,6 +129,16 @@ async function handleRequest(client, request, response) {
         return;
     }
 
+    if (request.method === 'GET' && (url.pathname === '/ark-backup' || url.pathname === '/ark-backup/')) {
+        await sendFile(response, path.join(ARK_BACKUP_WEB_ROOT, 'index.html'), 'text/html; charset=utf-8');
+        return;
+    }
+
+    if (request.method === 'GET' && url.pathname.startsWith('/ark-backup/')) {
+        await serveArkBackupStaticFile(url.pathname, response);
+        return;
+    }
+
     if (request.method === 'GET' && url.pathname.startsWith('/assets/')) {
         await serveAssetFile(url.pathname, response);
         return;
@@ -164,6 +181,16 @@ async function handleRequest(client, request, response) {
 
     if (request.method === 'POST' && url.pathname === '/api/ark-edit/save') {
         await handleArkEditSaveRequest(client, request, response);
+        return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/ark-backup/session') {
+        await handleArkBackupSessionRequest(url, response);
+        return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/ark-backup/restore') {
+        await handleArkBackupRestoreRequest(client, request, response);
         return;
     }
 
@@ -352,6 +379,57 @@ async function handleArkEditSaveRequest(client, request, response) {
     }
 }
 
+async function handleArkBackupSessionRequest(url, response) {
+    try {
+        const payload = verifyActWebToken(url.searchParams.get('token'), 'ark-backup');
+        const backups = await listArkBackups();
+
+        sendJson(response, 200, {
+            actorName: payload.displayName,
+            backups: backups
+        });
+    } catch (error) {
+        sendJson(response, 400, {
+            error: error.message
+        });
+    }
+}
+
+async function handleArkBackupRestoreRequest(client, request, response) {
+    try {
+        const body = await readJsonBody(request);
+        const token = String(body.token || '');
+
+        if (completedArkRestoreTokens.has(token)) {
+            throw new Error('この画面では既に復元済みです。Discordからもう一度開いてください。');
+        }
+
+        const payload = verifyActWebToken(token, 'ark-backup');
+        const arkConfig = getArkConfig();
+        const result = await restoreArkBackup(String(body.backupId || ''), {
+            actorId: payload.userId,
+            actorName: payload.displayName
+        });
+
+        completedArkRestoreTokens.add(token);
+
+        try {
+            await postArkBackupRestoreNotification(client, arkConfig.notifyChannelId || payload.channelId, result);
+        } catch (error) {
+            console.error('ARK restore notification failed:', error);
+        }
+
+        sendJson(response, 200, {
+            ok: true,
+            result: result
+        });
+    } catch (error) {
+        sendJson(response, 400, {
+            error: error.message
+        });
+    }
+}
+
 async function postArkEditNotifications(client, channelId, result) {
     const channel = await client.channels.fetch(channelId);
 
@@ -366,6 +444,18 @@ async function postArkEditNotifications(client, channelId, result) {
             content: message
         });
     }
+}
+
+async function postArkBackupRestoreNotification(client, channelId, result) {
+    const channel = await client.channels.fetch(channelId);
+
+    if (!channel?.isTextBased()) {
+        throw new Error('Discordの投稿先チャンネルを取得できませんでした。');
+    }
+
+    await channel.send({
+        content: buildArkRestoreNotificationMessage(result)
+    });
 }
 
 async function buildPoe2MarketSession(payload, catalog, settings, token) {
@@ -722,6 +812,23 @@ async function serveArkEditStaticFile(urlPath, response) {
     }
 
     await sendFile(response, path.join(ARK_WEB_ROOT, fileName), safeFileNames[fileName]);
+}
+
+async function serveArkBackupStaticFile(urlPath, response) {
+    const fileName = urlPath.slice('/ark-backup/'.length);
+    const safeFileNames = {
+        'app.css': 'text/css; charset=utf-8',
+        'app.js': 'text/javascript; charset=utf-8'
+    };
+
+    if (!safeFileNames[fileName]) {
+        sendJson(response, 404, {
+            error: 'ページが見つかりません。'
+        });
+        return;
+    }
+
+    await sendFile(response, path.join(ARK_BACKUP_WEB_ROOT, fileName), safeFileNames[fileName]);
 }
 
 async function serveAssetFile(urlPath, response) {

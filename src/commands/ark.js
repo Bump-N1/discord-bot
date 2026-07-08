@@ -6,12 +6,17 @@ import {
     MessageFlags,
     SlashCommandBuilder
 } from 'discord.js';
-import { buildArkEditUrl } from '../services/act/act-web-auth.js';
+import { buildArkBackupUrl, buildArkEditUrl } from '../services/act/act-web-auth.js';
 import { registerEphemeralWebReply } from '../services/act/ephemeral-web-link.js';
+import {
+    buildArkBackupNotificationMessage,
+    createArkBackup
+} from '../services/ark/ark-backup-service.js';
 import {
     buildArkRebootNotificationMessage,
     requestArkReboot
 } from '../services/ark/ark-edit-service.js';
+import { getArkConfig } from '../services/ark/ark-config.js';
 import {
     formatStateLabel,
     getArkJoinInfo,
@@ -41,6 +46,14 @@ export const arkStatusCommand = new SlashCommandBuilder()
 export const arkSettingsCommand = new SlashCommandBuilder()
     .setName('ark-settings')
     .setDescription('ARKサーバー設定を表示します');
+
+export const arkBackupCommand = new SlashCommandBuilder()
+    .setName('ark-backup')
+    .setDescription('ARKサーバーデータをバックアップします');
+
+export const arkRestoreCommand = new SlashCommandBuilder()
+    .setName('ark-restore')
+    .setDescription('ARKバックアップの復元画面を開きます');
 
 export async function handleArkEditCommand(interaction) {
     if (!interaction.guildId) {
@@ -96,6 +109,68 @@ export async function handleArkRebootCommand(interaction) {
         console.error('ARK reboot failed:', error);
         await interaction.editReply({
             content: 'NitradoからARKサーバーの状態を取得できなかったため、再起動を実行できませんでした。'
+        });
+    }
+}
+
+export async function handleArkBackupCommand(interaction) {
+    await interaction.deferReply({
+        flags: MessageFlags.Ephemeral
+    });
+
+    try {
+        const result = await createArkBackup({
+            reason: '手動バックアップ',
+            actorId: interaction.user.id,
+            actorName: interaction.member?.displayName || interaction.user.displayName || interaction.user.username
+        });
+
+        await postArkNotification(interaction.client, buildArkBackupNotificationMessage(result));
+        await interaction.editReply({
+            content: `バックアップを作成しました。保存日時：${formatDateTime(result.createdAt)} / ${formatBytes(result.totalBytes)}`
+        });
+    } catch (error) {
+        console.error('ARK backup failed:', error);
+        await interaction.editReply({
+            content: `ARKバックアップに失敗しました。${error.message}`
+        });
+    }
+}
+
+export async function handleArkRestoreCommand(interaction) {
+    if (!interaction.guildId) {
+        await interaction.reply({
+            content: 'このコマンドはDiscordサーバー内で実行してください。',
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+
+    try {
+        const url = buildArkBackupUrl({
+            guildId: interaction.guildId,
+            channelId: interaction.channelId,
+            userId: interaction.user.id,
+            displayName: interaction.member?.displayName || interaction.user.displayName || interaction.user.username
+        });
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setStyle(ButtonStyle.Link)
+                .setLabel('ARKバックアップを確認')
+                .setURL(url)
+        );
+
+        await interaction.reply({
+            content: 'バックアップ一覧から復元できます。復元はプレイヤーがいない場合のみ実行されます。',
+            components: [row],
+            flags: MessageFlags.Ephemeral
+        });
+        registerEphemeralWebReply(url, interaction);
+    } catch (error) {
+        console.error('ARK restore command failed:', error);
+        await interaction.reply({
+            content: 'ARKバックアップの復元画面を開けませんでした。Web画面の設定を確認してください。',
+            flags: MessageFlags.Ephemeral
         });
     }
 }
@@ -239,6 +314,20 @@ function formatDateTime(value) {
     }).format(date);
 }
 
+function formatBytes(value) {
+    const bytes = Number(value) || 0;
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let size = bytes;
+    let unitIndex = 0;
+
+    while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024;
+        unitIndex += 1;
+    }
+
+    return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
 function formatValue(value) {
     return String(value || '').trim() || EMPTY_VALUE;
 }
@@ -247,5 +336,23 @@ async function replyNitradoError(interaction, target, error) {
     console.error(`ARK ${target} fetch failed:`, error);
     await interaction.editReply({
         content: `NitradoからARKサーバーの${target}を取得できませんでした。`
+    });
+}
+
+async function postArkNotification(client, content) {
+    const channelId = getArkConfig().notifyChannelId;
+
+    if (!channelId) {
+        return;
+    }
+
+    const channel = await client.channels.fetch(channelId);
+
+    if (!channel?.isTextBased()) {
+        throw new Error('ARK_NOTIFY_CHANNEL_ID is not a text channel.');
+    }
+
+    await channel.send({
+        content: content
     });
 }

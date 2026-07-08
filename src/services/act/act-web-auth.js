@@ -4,6 +4,7 @@ const CREATE_LINK_TTL_MS = 30 * 60 * 1000;
 const MANAGE_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const MARKET_EDIT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const ARK_EDIT_LINK_TTL_MS = 30 * 60 * 1000;
+const ARK_BACKUP_LINK_TTL_MS = 30 * 60 * 1000;
 
 export function isActWebConfigured() {
     return Boolean(getActWebBaseUrl() && getSigningSecret());
@@ -45,6 +46,13 @@ export function buildArkEditUrl(payload) {
         ...payload,
         scope: 'ark-edit'
     }, ARK_EDIT_LINK_TTL_MS);
+}
+
+export function buildArkBackupUrl(payload) {
+    return buildSignedWebUrl('/ark-backup/', {
+        ...payload,
+        scope: 'ark-backup'
+    }, ARK_BACKUP_LINK_TTL_MS);
 }
 
 export function verifyActWebToken(token, requiredScope = '') {
