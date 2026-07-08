@@ -5,7 +5,7 @@ import {
     MessageFlags,
     SlashCommandBuilder
 } from 'discord.js';
-import { buildPoe2MarketEditUrl } from '../services/act/act-web-auth.js';
+import { buildPoe2EditUrl } from '../services/act/act-web-auth.js';
 import { registerEphemeralWebReply } from '../services/act/ephemeral-web-link.js';
 import { postCurrentPoe2MarketImage } from '../services/poe2/poe2-market-monitor.js';
 import {
@@ -19,8 +19,8 @@ export const poe2MarketCommand = new SlashCommandBuilder()
     .setName('poe2-market')
     .setDescription('PoE2の相場画像の定期投稿を開始・停止します');
 
-export const poe2MarketEditCommand = new SlashCommandBuilder()
-    .setName('poe2-market-edit')
+export const poe2EditCommand = new SlashCommandBuilder()
+    .setName('poe2-edit')
     .setDescription('PoE2相場画像に表示するアイテムを設定します');
 
 export async function handlePoe2MarketCommand(interaction) {
@@ -43,7 +43,7 @@ export async function handlePoe2MarketCommand(interaction) {
 
         if (settings.selectedProducts.length === 0) {
             await interaction.editReply({
-                content: '表示するアイテムが設定されていません。先に `/poe2-market-edit` で設定してください。'
+                content: '表示するアイテムが設定されていません。先に `/poe2-edit` で設定してください。'
             });
             return;
         }
@@ -72,7 +72,7 @@ export async function handlePoe2MarketCommand(interaction) {
     }
 }
 
-export async function handlePoe2MarketEditCommand(interaction) {
+export async function handlePoe2EditCommand(interaction) {
     if (!interaction.guildId) {
         await interaction.reply({
             content: 'この設定はDiscordサーバー内で実行してください。',
@@ -82,7 +82,7 @@ export async function handlePoe2MarketEditCommand(interaction) {
     }
 
     try {
-        const url = buildPoe2MarketEditUrl({
+        const url = buildPoe2EditUrl({
             guildId: interaction.guildId,
             userId: interaction.user.id,
             displayName: interaction.member?.displayName || interaction.user.displayName || interaction.user.username
@@ -101,7 +101,7 @@ export async function handlePoe2MarketEditCommand(interaction) {
         });
         registerEphemeralWebReply(url, interaction);
     } catch (error) {
-        console.error('PoE2 market edit command failed:', error);
+        console.error('PoE2 edit command failed:', error);
         await interaction.reply({
             content: '相場設定画面を開けませんでした。Web画面の設定を確認してください。',
             flags: MessageFlags.Ephemeral

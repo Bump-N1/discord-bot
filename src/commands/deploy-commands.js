@@ -14,7 +14,7 @@ import {
     arkSettingsCommand,
     arkStatusCommand
 } from './ark.js';
-import { poe2MarketCommand, poe2MarketEditCommand } from './poe2.js';
+import { poe2EditCommand, poe2MarketCommand } from './poe2.js';
 
 const commands = [
     arkEditCommand.toJSON(),
@@ -32,7 +32,7 @@ const commands = [
     owActCommand.toJSON(),
     ff14ActCommand.toJSON(),
     poe2MarketCommand.toJSON(),
-    poe2MarketEditCommand.toJSON()
+    poe2EditCommand.toJSON()
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

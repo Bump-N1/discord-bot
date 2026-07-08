@@ -30,6 +30,8 @@ import {
     getActWebHost,
     getActWebPort,
     isActWebConfigured,
+    LEGACY_POE2_EDIT_SCOPE,
+    POE2_EDIT_SCOPE,
     verifyActWebToken
 } from './act-web-auth.js';
 import { dismissEphemeralWebReply } from './ephemeral-web-link.js';
@@ -66,6 +68,7 @@ const ASSET_ROOT = path.resolve(process.cwd(), 'assets');
 const completedCreateTokens = new Set();
 const completedArkEditTokens = new Set();
 const completedArkRestoreTokens = new Set();
+const POE2_EDIT_SCOPES = [POE2_EDIT_SCOPE, LEGACY_POE2_EDIT_SCOPE];
 const poe2IconCache = new Map();
 
 export function startActWebServer(client) {
@@ -109,12 +112,17 @@ async function handleRequest(client, request, response) {
         return;
     }
 
-    if (request.method === 'GET' && (url.pathname === '/poe2-market' || url.pathname === '/poe2-market/')) {
+    if (request.method === 'GET'
+        && (url.pathname === '/poe2-edit'
+            || url.pathname === '/poe2-edit/'
+            || url.pathname === '/poe2-market'
+            || url.pathname === '/poe2-market/')) {
         await sendFile(response, path.join(POE2_WEB_ROOT, 'index.html'), 'text/html; charset=utf-8');
         return;
     }
 
-    if (request.method === 'GET' && url.pathname.startsWith('/poe2-market/')) {
+    if (request.method === 'GET'
+        && (url.pathname.startsWith('/poe2-edit/') || url.pathname.startsWith('/poe2-market/'))) {
         await servePoe2MarketStaticFile(url.pathname, response);
         return;
     }
@@ -229,7 +237,7 @@ async function handleWebLinkOpenedRequest(request, response) {
 
 async function handlePoe2MarketSessionRequest(url, response) {
     try {
-        const payload = verifyActWebToken(url.searchParams.get('token'), 'poe2-market-edit');
+        const payload = verifyActWebToken(url.searchParams.get('token'), POE2_EDIT_SCOPES);
         const catalog = await fetchPoe2MarketCatalog();
         const settings = await getPoe2MarketSettings(payload.guildId);
 
@@ -244,7 +252,7 @@ async function handlePoe2MarketSessionRequest(url, response) {
 async function handlePoe2MarketSettingsRequest(request, response) {
     try {
         const body = await readJsonBody(request);
-        const payload = verifyActWebToken(body.token, 'poe2-market-edit');
+        const payload = verifyActWebToken(body.token, POE2_EDIT_SCOPES);
         const selectedProductIds = Array.from(new Set(
             Array.isArray(body.selectedProductIds)
                 ? body.selectedProductIds.map(String)
@@ -287,7 +295,7 @@ async function handlePoe2MarketSettingsRequest(request, response) {
 
 async function handlePoe2MarketIconRequest(url, response) {
     try {
-        verifyActWebToken(url.searchParams.get('token'), 'poe2-market-edit');
+        verifyActWebToken(url.searchParams.get('token'), POE2_EDIT_SCOPES);
         const id = String(url.searchParams.get('id') || '');
         const catalog = await fetchPoe2MarketCatalog();
         const product = catalog.products.find(function(candidate) {
@@ -781,7 +789,8 @@ async function serveWebStaticFile(urlPath, response) {
 }
 
 async function servePoe2MarketStaticFile(urlPath, response) {
-    const fileName = urlPath.slice('/poe2-market/'.length);
+    const prefix = urlPath.startsWith('/poe2-edit/') ? '/poe2-edit/' : '/poe2-market/';
+    const fileName = urlPath.slice(prefix.length);
     const safeFileNames = {
         'app.css': 'text/css; charset=utf-8',
         'app.js': 'text/javascript; charset=utf-8'

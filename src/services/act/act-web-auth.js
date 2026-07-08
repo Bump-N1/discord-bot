@@ -2,9 +2,12 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const CREATE_LINK_TTL_MS = 30 * 60 * 1000;
 const MANAGE_LINK_TTL_MS = 24 * 60 * 60 * 1000;
-const MARKET_EDIT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
+const POE2_EDIT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const ARK_EDIT_LINK_TTL_MS = 30 * 60 * 1000;
 const ARK_BACKUP_LINK_TTL_MS = 30 * 60 * 1000;
+
+export const POE2_EDIT_SCOPE = 'poe2-edit';
+export const LEGACY_POE2_EDIT_SCOPE = 'poe2-market-edit';
 
 export function isActWebConfigured() {
     return Boolean(getActWebBaseUrl() && getSigningSecret());
@@ -34,11 +37,11 @@ export function buildActManageUrl(payload) {
     }, MANAGE_LINK_TTL_MS);
 }
 
-export function buildPoe2MarketEditUrl(payload) {
-    return buildSignedWebUrl('/poe2-market/', {
+export function buildPoe2EditUrl(payload) {
+    return buildSignedWebUrl('/poe2-edit/', {
         ...payload,
-        scope: 'poe2-market-edit'
-    }, MARKET_EDIT_LINK_TTL_MS);
+        scope: POE2_EDIT_SCOPE
+    }, POE2_EDIT_LINK_TTL_MS);
 }
 
 export function buildArkEditUrl(payload) {
@@ -85,7 +88,9 @@ export function verifyActWebToken(token, requiredScope = '') {
         throw new Error('リンクの有効期限が切れました。Discordからもう一度開いてください。');
     }
 
-    if (requiredScope && payload.scope !== requiredScope) {
+    const requiredScopes = Array.isArray(requiredScope) ? requiredScope : [requiredScope].filter(Boolean);
+
+    if (requiredScopes.length > 0 && !requiredScopes.includes(payload.scope)) {
         throw new Error('この操作には使用できないリンクです。');
     }
 

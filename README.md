@@ -22,7 +22,7 @@ FF14 / LoL / OWの募集作成、LoL / OWの戦績確認、ARKサーバー管理
 | 募集 | `/act-ff14`, `/act-lol`, `/act-ow` |
 | 戦績確認 | `/lol-stats`, `/lol-stats-champion`, `/ow-stats`, `/ow-stats-hero` |
 | ARK | `/ark-join`, `/ark-status`, `/ark-settings`, `/ark-edit`, `/ark-reboot`, `/ark-backup`, `/ark-restore` |
-| PoE2 | `/poe2-market`, `/poe2-market-edit` |
+| PoE2 | `/poe2-market`, `/poe2-edit` |
 
 ## セットアップ
 
