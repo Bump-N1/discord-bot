@@ -223,7 +223,7 @@ function buildSnapshotSourceText(snapshot) {
 
 function buildFooterText(snapshot) {
     if (snapshot.source === 'poe-ninja') {
-        return '取得元: poe.ninja / 暫定データ';
+        return '取得元: poe.ninja';
     }
 
     return '取得元: Path of Exile 2 Currency Exchange / 1時間単位の確定履歴';

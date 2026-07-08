@@ -19,7 +19,7 @@ import { startArkConfigHistoryMonitor } from './services/ark/ark-config-history.
 import { startArkBackupMonitor } from './services/ark/ark-backup-monitor.js';
 import { startActMonitor } from './services/act/act-monitor.js';
 import { startActWebServer } from './services/act/act-web-server.js';
-import { handlePoe2MarketCommand, handlePoe2MarketEditCommand } from './commands/poe2.js';
+import { handlePoe2EditCommand, handlePoe2MarketCommand } from './commands/poe2.js';
 import { startPoe2MarketMonitor } from './services/poe2/poe2-market-monitor.js';
 
 const client = new Client({
@@ -142,8 +142,8 @@ client.on('interactionCreate', async function(interaction) {
         return;
     }
 
-    if (interaction.commandName === 'poe2-market-edit') {
-        await handlePoe2MarketEditCommand(interaction);
+    if (interaction.commandName === 'poe2-edit') {
+        await handlePoe2EditCommand(interaction);
         return;
     }
 });
