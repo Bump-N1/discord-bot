@@ -11,5 +11,8 @@
     "discord.js": "^14.0.0",
     "dotenv": "^16.0.0",
     "sharp": "^0.34.5"
+  },
+  "overrides": {
+    "undici": "6.27.0"
   }
 }
