@@ -6,14 +6,17 @@ import { handleOwCommand } from './commands/ow.js';
 import { handleOwHeroAutocomplete, handleOwHeroCommand } from './commands/ow-hero.js';
 import { handleActCommand, handleActComponent, handleActModalSubmit } from './commands/act.js';
 import {
+    handleArkBackupCommand,
     handleArkEditCommand,
     handleArkJoinCommand,
     handleArkRebootCommand,
+    handleArkRestoreCommand,
     handleArkSettingsCommand,
     handleArkStatusCommand
 } from './commands/ark.js';
 import { startArkStatusMonitor } from './services/ark/ark-monitor.js';
 import { startArkConfigHistoryMonitor } from './services/ark/ark-config-history.js';
+import { startArkBackupMonitor } from './services/ark/ark-backup-monitor.js';
 import { startActMonitor } from './services/act/act-monitor.js';
 import { startActWebServer } from './services/act/act-web-server.js';
 import { handlePoe2MarketCommand, handlePoe2MarketEditCommand } from './commands/poe2.js';
@@ -29,6 +32,7 @@ client.once('clientReady', function() {
     console.log(`Logged in as ${client.user.tag}`);
     startArkStatusMonitor(client);
     startArkConfigHistoryMonitor();
+    startArkBackupMonitor(client);
     startActMonitor(client);
     startActWebServer(client);
     startPoe2MarketMonitor(client);
@@ -65,6 +69,16 @@ client.on('interactionCreate', async function(interaction) {
 
     if (interaction.commandName === 'ark-edit') {
         await handleArkEditCommand(interaction);
+        return;
+    }
+
+    if (interaction.commandName === 'ark-backup') {
+        await handleArkBackupCommand(interaction);
+        return;
+    }
+
+    if (interaction.commandName === 'ark-restore') {
+        await handleArkRestoreCommand(interaction);
         return;
     }
 

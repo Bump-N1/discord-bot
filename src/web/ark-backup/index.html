@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ARKバックアップ復元</title>
+    <link rel="stylesheet" href="/ark-backup/app.css">
+</head>
+<body>
+    <main class="page">
+        <section id="loadingView" class="panel state-panel">
+            <p class="eyebrow">ARK</p>
+            <h1>バックアップを読み込んでいます</h1>
+        </section>
+
+        <section id="errorView" class="panel state-panel hidden">
+            <p class="eyebrow">ARK</p>
+            <h1>開けませんでした</h1>
+            <p id="errorText" class="muted"></p>
+        </section>
+
+        <section id="completeView" class="panel state-panel hidden">
+            <p class="eyebrow">ARK</p>
+            <h1>復元を開始しました</h1>
+            <p class="muted">この画面は閉じてください。</p>
+            <div id="completeSummary" class="summary-list"></div>
+        </section>
+
+        <section id="restoreView" class="hidden">
+            <header class="page-header">
+                <div>
+                    <p class="eyebrow">ARK</p>
+                    <h1>バックアップ復元</h1>
+                </div>
+                <span id="backupCount" class="badge"></span>
+            </header>
+
+            <section class="panel warning-panel">
+                <h2>復元前の確認</h2>
+                <p class="muted">復元はバックアップに含まれるARKデータをNitradoへ上書きし、バックアップに含まれない対象ファイルを削除します。完了後にサーバーを再起動します。プレイヤーがいる場合や人数を確認できない場合は実行されません。</p>
+            </section>
+
+            <section class="panel">
+                <div class="section-header">
+                    <h2>保存済みバックアップ</h2>
+                </div>
+                <div id="backupList" class="backup-list"></div>
+            </section>
+        </section>
+    </main>
+
+    <dialog id="confirmDialog" class="confirm-dialog">
+        <div class="confirm-card">
+            <p class="eyebrow">ARK RESTORE</p>
+            <h2>このバックアップを復元しますか？</h2>
+            <p id="confirmText" class="muted"></p>
+            <div class="dialog-actions">
+                <button id="cancelRestoreButton" type="button" class="secondary-button">キャンセル</button>
+                <button id="confirmRestoreButton" type="button" class="danger-button">復元する</button>
+            </div>
+        </div>
+    </dialog>
+
+    <script src="/ark-backup/app.js" type="module"></script>
+</body>
+</html>

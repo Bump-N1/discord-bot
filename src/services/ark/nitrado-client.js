@@ -44,6 +44,23 @@ export async function fetchNitradoGameServer(config) {
     return data?.data?.gameserver || data?.data || {};
 }
 
+export async function fetchNitradoFileServerBookmarks(config) {
+    assertNitradoConfig(config);
+    const data = await fetchNitradoJson(config, '/gameservers/file_server/bookmarks');
+
+    return (data?.data?.bookmarks || []).map(String).filter(Boolean);
+}
+
+export async function listNitradoDirectory(config, directoryPath = '') {
+    assertNitradoConfig(config);
+    const query = directoryPath ? {
+        dir: directoryPath
+    } : {};
+    const data = await fetchNitradoJson(config, '/gameservers/file_server/list', query);
+
+    return data?.data?.entries || [];
+}
+
 export async function fetchNitradoServerStatus(config) {
     const [gameServer, settingsConfig] = await Promise.all([
         fetchNitradoGameServer(config),
@@ -341,8 +358,8 @@ function normalizeNitradoFileSettings(gameUserSettings, gameIni) {
 }
 
 async function fetchNitradoConfigFiles(config, fileNames) {
-    const data = await fetchNitradoJson(config, '/gameservers/file_server/bookmarks');
-    const configDirectory = (data?.data?.bookmarks || []).find(function(directory) {
+    const bookmarks = await fetchNitradoFileServerBookmarks(config);
+    const configDirectory = bookmarks.find(function(directory) {
         return CONFIG_DIRECTORY_PATTERN.test(String(directory));
     });
 
@@ -361,6 +378,12 @@ async function fetchNitradoConfigFiles(config, fileNames) {
 }
 
 async function downloadNitradoFile(config, filePath) {
+    const buffer = await downloadNitradoFileBuffer(config, filePath);
+
+    return buffer.toString('utf8');
+}
+
+export async function downloadNitradoFileBuffer(config, filePath) {
     const data = await fetchNitradoJson(config, '/gameservers/file_server/download', {
         file: filePath
     });
@@ -378,7 +401,51 @@ async function downloadNitradoFile(config, filePath) {
         throw new Error(`Nitrado file download error: ${response.status}`);
     }
 
-    return await response.text();
+    return Buffer.from(await response.arrayBuffer());
+}
+
+export async function uploadNitradoFileBuffer(config, directoryPath, fileName, contents) {
+    assertNitradoConfig(config);
+    const data = await postNitradoJson(config, '/gameservers/file_server/upload', {
+        path: ensureTrailingSlash(directoryPath),
+        file: fileName
+    });
+    const token = data?.data?.token;
+
+    if (!token?.url || !token?.token) {
+        throw new Error('Nitrado file upload token was not returned.');
+    }
+
+    const form = new FormData();
+    const buffer = Buffer.isBuffer(contents) ? contents : Buffer.from(contents);
+
+    form.append('file', new Blob([buffer]), fileName);
+
+    const response = await fetch(token.url, {
+        method: 'POST',
+        headers: {
+            token: token.token
+        },
+        body: form
+    });
+
+    if (!response.ok) {
+        throw new Error(`Nitrado file upload error: ${response.status}`);
+    }
+}
+
+export async function createNitradoDirectory(config, directoryPath) {
+    assertNitradoConfig(config);
+    await postNitradoJson(config, '/gameservers/file_server/mkdir', {
+        path: directoryPath
+    });
+}
+
+export async function deleteNitradoPath(config, remotePath) {
+    assertNitradoConfig(config);
+    await deleteNitradoJson(config, '/gameservers/file_server/delete', {
+        path: remotePath
+    });
 }
 
 async function fetchNitradoJson(config, path, query = {}) {
@@ -397,7 +464,12 @@ async function fetchNitradoJson(config, path, query = {}) {
     });
 
     if (!response.ok) {
-        throw new Error(`Nitrado API error: ${response.status}`);
+        const text = await response.text();
+        const error = new Error(`Nitrado API error: ${response.status}`);
+
+        error.status = response.status;
+        error.body = text;
+        throw error;
     }
 
     return await response.json();
@@ -455,7 +527,57 @@ async function postNitradoJson(config, path, body) {
         }
     }
 
-    throw new Error(lastError || 'Nitrado API error');
+    const error = new Error(lastError || 'Nitrado API error');
+
+    error.status = parseNitradoStatus(lastError);
+    error.body = lastError;
+    throw error;
+}
+
+async function deleteNitradoJson(config, path, query = {}) {
+    const url = new URL(`${NITRADO_API_BASE_URL}/services/${config.nitradoServiceId}${path}`);
+
+    Object.entries(query).forEach(function([name, value]) {
+        url.searchParams.set(name, value);
+    });
+
+    const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${config.nitradoToken}`,
+            'User-Agent': 'discord-bot/1.0'
+        }
+    });
+    const responseText = await response.text();
+
+    if (response.ok) {
+        if (!responseText) {
+            return {};
+        }
+
+        try {
+            return JSON.parse(responseText);
+        } catch (error) {
+            return {};
+        }
+    }
+
+    const error = new Error(`Nitrado API error: ${response.status} ${responseText}`);
+
+    error.status = response.status;
+    error.body = responseText;
+    throw error;
+}
+
+export function isTerminalNitradoServiceError(error) {
+    return [404, 410].includes(Number(error?.status));
+}
+
+function parseNitradoStatus(message) {
+    const match = String(message || '').match(/Nitrado API error:\s*(\d+)/u);
+
+    return match ? Number(match[1]) : undefined;
 }
 
 function parseIni(content) {
@@ -655,4 +777,10 @@ function assertNitradoConfig(config) {
     if (!config.nitradoToken || !config.nitradoServiceId) {
         throw new Error('Nitrado連携が設定されていません。');
     }
+}
+
+function ensureTrailingSlash(value) {
+    const text = String(value || '').trim();
+
+    return text.endsWith('/') ? text : `${text}/`;
 }
