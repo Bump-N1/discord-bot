@@ -5,7 +5,8 @@ import {
     buildArkBackupFailureNotificationMessage,
     buildArkBackupNotificationMessage,
     createArkBackup,
-    getArkServiceAvailability
+    getArkServiceAvailability,
+    isArkBackupAlreadyRunningError
 } from './ark-backup-service.js';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -78,6 +79,11 @@ async function runMonitorTick(client) {
         state.lastBackupErrorAt = '';
         await notifyArkChannel(client, buildArkBackupNotificationMessage(result));
     } catch (error) {
+        if (isArkBackupAlreadyRunningError(error)) {
+            await writeMonitorState(state);
+            return;
+        }
+
         await notifyFailureIfNeeded(client, state, '定期バックアップ', error);
     }
 
@@ -101,6 +107,10 @@ async function handleTerminalServiceState(client, state, availability) {
         state.lastBackupId = result.id;
         await notifyArkChannel(client, buildArkBackupNotificationMessage(result));
     } catch (error) {
+        if (isArkBackupAlreadyRunningError(error)) {
+            return;
+        }
+
         await notifyArkChannel(client, buildArkBackupFailureNotificationMessage('サービス終了検知', error));
     }
 
