@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getArkConfig } from './ark-config.js';
 import {
@@ -16,6 +16,8 @@ import {
 } from './nitrado-client.js';
 
 const BACKUP_ID_PATTERN = /^\d{8}-\d{6}(?:-\d+)?$/u;
+const BACKUP_LOCK_FILE = '.backup.lock';
+const BACKUP_LOCK_STALE_MS = 6 * 60 * 60 * 1000;
 const CONFIG_DIRECTORY_PATTERN = /\/ShooterGame\/Saved\/Config\/WindowsServer\/?$/iu;
 const FT_ROOT_PATTERN = /\/ftproot\/?$/iu;
 const ARK_APP_ROOT_PATTERN = /\/ftproot\/arksa\/?$/iu;
@@ -35,14 +37,18 @@ const TERMINAL_SERVICE_STATUSES = new Set([
 
 export async function createArkBackup(options = {}) {
     const config = getArkConfig();
-    const now = new Date();
-    const backupId = await createUniqueBackupId(config.backupDirectory, now);
-    const partialDirectory = resolveBackupPath(config.backupDirectory, `${backupId}.partial`);
-    const backupDirectory = resolveBackupPath(config.backupDirectory, backupId);
-    const filesDirectory = path.join(partialDirectory, 'files');
+    const releaseLock = await acquireArkBackupLock(config);
     let completed = false;
+    let partialDirectory = '';
 
     try {
+        const now = new Date();
+        const backupId = await createUniqueBackupId(config.backupDirectory, now);
+        const backupDirectory = resolveBackupPath(config.backupDirectory, backupId);
+        const filesDirectory = path.join(resolveBackupPath(config.backupDirectory, `${backupId}.partial`), 'files');
+
+        partialDirectory = resolveBackupPath(config.backupDirectory, `${backupId}.partial`);
+
         const arkPaths = await resolveArkBackupPaths(config);
         const server = await readOptionalServerConfig(config);
         const remoteFiles = await collectBackupFiles(config, arkPaths);
@@ -97,13 +103,19 @@ export async function createArkBackup(options = {}) {
 
         return summarizeBackupManifest(manifest);
     } finally {
-        if (!completed) {
+        if (!completed && partialDirectory) {
             await rm(partialDirectory, {
                 recursive: true,
                 force: true
             });
         }
+
+        await releaseLock();
     }
+}
+
+export function isArkBackupAlreadyRunningError(error) {
+    return error?.code === 'ARK_BACKUP_RUNNING';
 }
 
 export async function listArkBackups() {
@@ -456,6 +468,81 @@ async function pruneArkBackups(backupDirectory, retentionCount) {
             force: true
         });
     }
+}
+
+async function acquireArkBackupLock(config) {
+    const backupDirectory = resolveBackupDirectory(config.backupDirectory);
+    const lockPath = resolveBackupPath(config.backupDirectory, BACKUP_LOCK_FILE);
+
+    await mkdir(backupDirectory, {
+        recursive: true
+    });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+            const handle = await open(lockPath, 'wx');
+
+            try {
+                await handle.writeFile(`${JSON.stringify({
+                    pid: process.pid,
+                    createdAt: new Date().toISOString()
+                }, null, 2)}\n`, 'utf8');
+            } finally {
+                await handle.close();
+            }
+
+            return async function releaseArkBackupLock() {
+                try {
+                    await unlink(lockPath);
+                } catch (error) {
+                    if (error.code !== 'ENOENT') {
+                        throw error;
+                    }
+                }
+            };
+        } catch (error) {
+            if (error.code !== 'EEXIST') {
+                throw error;
+            }
+
+            if (await removeStaleBackupLock(lockPath)) {
+                continue;
+            }
+
+            throw createBackupAlreadyRunningError();
+        }
+    }
+
+    throw createBackupAlreadyRunningError();
+}
+
+async function removeStaleBackupLock(lockPath) {
+    try {
+        const lockStat = await stat(lockPath);
+        const lockAge = Date.now() - lockStat.mtimeMs;
+
+        if (lockAge < BACKUP_LOCK_STALE_MS) {
+            return false;
+        }
+
+        await unlink(lockPath);
+
+        return true;
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            return true;
+        }
+
+        return false;
+    }
+}
+
+function createBackupAlreadyRunningError() {
+    const error = new Error('ARKバックアップは現在実行中です。完了後にもう一度試してください。');
+
+    error.code = 'ARK_BACKUP_RUNNING';
+
+    return error;
 }
 
 async function readBackupManifest(backupDirectory, backupId) {
