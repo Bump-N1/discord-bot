@@ -181,3 +181,8 @@ async function writeMonitorState(state) {
 function logMonitorError(error) {
     console.error('ARK backup monitor failed:', error);
 }
+
+export const __testables = {
+    canRunArkBackupMonitor,
+    isBackupDue
+};

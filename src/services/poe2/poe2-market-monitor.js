@@ -159,3 +159,8 @@ async function sendSnapshotImage(client, channelId, image) {
 function logMonitorError(error) {
     console.error('PoE2 market monitor failed:', error);
 }
+
+export const __testables = {
+    buildSubscriptionGroups,
+    isPostDue
+};
