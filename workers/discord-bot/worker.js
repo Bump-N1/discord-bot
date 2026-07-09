@@ -81,7 +81,8 @@ const SOURCES = [
         game: 'OW',
         url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/',
         webhookEnvName: 'DISCORD_WEBHOOK_URL_OW',
-        parser: parseOverwatchPatchNotes
+        parser: parseOverwatchPatchNotes,
+        dedupeByUrl: false
     },
     {
         game: 'PoE2',
@@ -300,9 +301,13 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
     const latestKey = `latest:${source.game}`;
     const postedIds = await getPostedIds(env, postedKey);
     const postedIdSet = new Set(postedIds);
-    const validPatchNotes = uniquePatchNotes(patchNotes.filter(function(patchNote) {
-        return patchNote && patchNote.id && patchNote.url;
-    }));
+    const validPatchNotes = uniquePatchNotes(patchNotes
+        .filter(function(patchNote) {
+            return patchNote && patchNote.id && patchNote.url;
+        })
+        .map(function(patchNote) {
+            return applySourceDedupeOptions(source, patchNote);
+        }));
 
     if (validPatchNotes.length === 0) {
         results.push({
@@ -424,6 +429,17 @@ async function savePostedIds(env, key, postedIds) {
     await env.PATCHNOTE_KV.put(key, JSON.stringify(postedIds.slice(-POSTED_HISTORY_LIMIT)));
 }
 
+function applySourceDedupeOptions(source, patchNote) {
+    if (source.dedupeByUrl !== false) {
+        return patchNote;
+    }
+
+    return {
+        ...patchNote,
+        dedupeByUrl: false
+    };
+}
+
 function collectStoredIds(patchNotes) {
     let storedIds = [];
 
@@ -455,7 +471,7 @@ function getStoredPatchNoteIds(patchNote) {
         ids.push(`id:${String(patchNote.id)}`);
     }
 
-    if (patchNote.url) {
+    if (patchNote.url && patchNote.dedupeByUrl !== false) {
         ids.push(`url:${normalizeComparableUrl(patchNote.url)}`);
     }
 
@@ -502,7 +518,7 @@ function getPatchNoteKeys(patchNote) {
         keys.push(`id:${String(patchNote.id)}`);
     }
 
-    if (patchNote.url) {
+    if (patchNote.url && patchNote.dedupeByUrl !== false) {
         keys.push(`url:${normalizeComparableUrl(patchNote.url)}`);
     }
 
