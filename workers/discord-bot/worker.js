@@ -2208,3 +2208,17 @@ function getDiscordPresentation(game) {
         embedTitle: `📝 ${game} パッチノート更新`
     };
 }
+
+export const __testables = {
+    SOURCES,
+    applySourceDedupeOptions,
+    buildGenshinArticleUrl,
+    getDiscordPresentation,
+    getPatchNoteKeys,
+    getStoredPatchNoteIds,
+    isFf14MaintenanceNewsTitle,
+    isPostedPatchNote,
+    parseGenshinContentListApi,
+    parseOverwatchPatchNotes,
+    uniquePatchNotes
+};
