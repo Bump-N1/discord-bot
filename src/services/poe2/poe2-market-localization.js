@@ -665,9 +665,9 @@ function mapOfficialMarketProduct(groupId, groupLabel, subCategory, label, id, i
 
         if (section === 'ソウルコア') {
             return {
-                category: 'SoulCores',
+                category: 'Incursion',
                 subCategory: 'ソウルコア',
-                sortOrder: SOUL_CORE_SORT_ORDER.get(productId) ?? itemSortOrder
+                sortOrder: itemSortOrder
             };
         }
 
@@ -1088,3 +1088,9 @@ async function fetchPoe2ItemLabels(dataRoot, userAgent, language) {
 
     return labels;
 }
+
+export const __testables = {
+    getSubCategoryOrder,
+    mapOfficialMarketProduct,
+    shouldExcludeMarketProduct
+};

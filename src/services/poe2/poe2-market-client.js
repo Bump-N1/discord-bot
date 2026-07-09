@@ -651,3 +651,12 @@ async function buildResponseError(prefix, response) {
 
     return new Error(`${prefix} (${response.status})${suffix}`);
 }
+
+export const __testables = {
+    buildPoeNinjaProductPrices,
+    compareCatalogProducts,
+    findLatestTradeChallengeLeague,
+    getPoeNinjaSourceCategory,
+    normalizeMarketProductCategory,
+    normalizePoeNinjaIconUrl
+};

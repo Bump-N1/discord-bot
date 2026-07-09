@@ -692,3 +692,12 @@ function normalizeHeroSearchText(value) {
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '');
 }
+
+export const __testables = {
+    buildHeroSummary,
+    buildSummary,
+    extractRanks,
+    extractRoleStats,
+    formatRank,
+    normalizeHeroSearchText
+};
