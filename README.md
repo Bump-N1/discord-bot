@@ -14,6 +14,7 @@ FF14 / LoL / OWの募集作成、LoL / OWの戦績確認、ARKサーバー管理
 - [PoE2相場](https://github.com/Bump-N1/discord-bot/wiki/PoE2相場)
 - [戦績確認](https://github.com/Bump-N1/discord-bot/wiki/戦績確認)
 - [運用](https://github.com/Bump-N1/discord-bot/wiki/運用)
+- [開発](https://github.com/Bump-N1/discord-bot/wiki/開発)
 
 ## 主なコマンド
 
