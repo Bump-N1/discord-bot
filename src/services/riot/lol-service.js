@@ -247,3 +247,9 @@ function isChampionMatched(championName, championFilter) {
 
     return normalizeSearchText(championName).includes(normalizedFilter);
 }
+
+export const __testables = {
+    buildSummary,
+    convertQueueName,
+    isChampionMatched
+};
