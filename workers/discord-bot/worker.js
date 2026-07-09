@@ -568,14 +568,19 @@ async function parseRiotPatchNotes(listHtml, baseUrl, game) {
         };
     }
 
-    const title = extractMetaContent(articleHtml, 'property', 'og:title')
+    const articleText = htmlToText(articleHtml);
+    const title = findFirstMatch(articleText, getRiotTitlePatterns(game))
+        || getJapaneseFallbackTitle(latestLink.label)
+        || extractMetaContent(articleHtml, 'property', 'og:title')
         || extractMetaContent(articleHtml, 'name', 'twitter:title')
-        || findFirstMatch(htmlToText(articleHtml), getRiotTitlePatterns(game))
         || `${game} パッチノート更新`;
 
-    const description = extractMetaContent(articleHtml, 'property', 'og:description')
+    const metaDescription = extractMetaContent(articleHtml, 'property', 'og:description')
         || extractMetaContent(articleHtml, 'name', 'description')
         || '';
+    const description = containsJapaneseText(metaDescription)
+        ? metaDescription
+        : extractRiotJapaneseDescription(articleHtml);
 
     const publishedTime = extractMetaContent(articleHtml, 'property', 'article:published_time')
         || extractMetaContent(articleHtml, 'name', 'article:published_time')
@@ -598,19 +603,11 @@ async function parseRiotPatchNotes(listHtml, baseUrl, game) {
 
 async function parseOverwatchPatchNotes(html, baseUrl) {
     const text = htmlToText(html);
-
-    const japaneseCandidates = [...text.matchAll(/\[(?:オーバーウォッチ 2|オーバーウォッチ)\][^。]{0,160}?おしらせ/g)].map(function(match) {
-        const title = cleanupText(match[0]);
-        const date = findFirstMatch(title, [
-            /20\d{2}年\d{1,2}月\d{1,2}日/
-        ]);
-
-        return {
-            title: title,
-            date: date,
-            dateValue: convertOverwatchDateToNumber(date)
-        };
-    });
+    const japaneseCandidates = extractOverwatchTextCandidates(text, [
+        /\[(?:オーバーウォッチ 2|オーバーウォッチ)\][^。]{0,220}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
+        /(?:オーバーウォッチ 2|オーバーウォッチ)[^。]{0,80}?20\d{2}年\d{1,2}月\d{1,2}日[^。]{0,180}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
+        /20\d{2}年\d{1,2}月\d{1,2}日[^。]{0,180}?(?:配信パッチ内容|パッチ内容|パッチノート|アップデート)(?:のお知らせ|のおしらせ)?/g
+    ]);
 
     const englishCandidates = [...text.matchAll(/Overwatch(?: 2)? Retail Patch Notes\s*[-–—:]\s*([A-Z][a-z]+ \d{1,2}, 20\d{2})/g)].map(function(match) {
         const title = cleanupText(match[0]);
@@ -623,7 +620,7 @@ async function parseOverwatchPatchNotes(html, baseUrl) {
         };
     });
 
-    const candidates = japaneseCandidates.concat(englishCandidates).filter(function(candidate) {
+    const candidates = uniqueOverwatchCandidates(japaneseCandidates.concat(englishCandidates)).filter(function(candidate) {
         return candidate.dateValue > 0;
     });
 
@@ -645,6 +642,45 @@ async function parseOverwatchPatchNotes(html, baseUrl) {
         url: baseUrl,
         imageUrl: ''
     };
+}
+
+function extractOverwatchTextCandidates(text, patterns) {
+    const candidates = [];
+
+    for (const pattern of patterns) {
+        for (const match of String(text || '').matchAll(pattern)) {
+            const title = cleanupText(match[0]);
+            const date = findFirstMatch(title, [
+                /20\d{2}年\d{1,2}月\d{1,2}日/
+            ]);
+
+            candidates.push({
+                title: title,
+                date: date,
+                dateValue: convertOverwatchDateToNumber(date)
+            });
+        }
+    }
+
+    return candidates;
+}
+
+function uniqueOverwatchCandidates(candidates) {
+    const seen = new Set();
+    const unique = [];
+
+    for (const candidate of candidates) {
+        const key = `${candidate.date}:${candidate.title}`;
+
+        if (seen.has(key)) {
+            continue;
+        }
+
+        seen.add(key);
+        unique.push(candidate);
+    }
+
+    return unique;
 }
 
 function convertOverwatchDateToNumber(dateText) {
@@ -784,9 +820,9 @@ async function parseFf14WorldMaintenance(html, baseUrl) {
             const normalizedTitle = link.title.replace(/\s+/g, ' ');
 
             return link.url.includes('/lodestone/news/detail/')
-                && normalizedTitle.includes('全ワールド メンテナンス作業');
+                && isFf14MaintenanceNewsTitle(normalizedTitle);
         })
-        .slice(0, 5);
+        .slice(0, 10);
 
     if (maintenanceLinks.length === 0) {
         return null;
@@ -883,9 +919,7 @@ function parseGenshinContentListApi(text, source) {
         const id = String(item.iInfoId || item.iInfoIdStr || item.id || item.info_id || '');
         const title = cleanupText(item.sTitle || item.title || item.name || '');
         const dateText = item.dtStartTime || item.sStartTime || item.dtCreateTime || item.created_at || item.pubDate || '';
-        const url = item.sUrl
-            ? normalizeUrl(item.sUrl, GENSHIN_SITE_ROOT)
-            : `${GENSHIN_SITE_ROOT}/ja/news/detail/${id}`;
+        const url = buildGenshinArticleUrl(id, item.sUrl);
         const contentHtml = [
             item.sIntro,
             item.sDescription,
@@ -1045,8 +1079,14 @@ function extractGenshinImageCandidates(html, baseUrl) {
                 continue;
             }
 
+            const normalizedUrl = safeNormalizeUrl(imageUrl, baseUrl);
+
+            if (!normalizedUrl) {
+                continue;
+            }
+
             candidates.push({
-                url: normalizeUrl(imageUrl, baseUrl),
+                url: normalizedUrl,
                 index: match.index || 0,
                 context: getTextContext(normalizedHtml, match.index || 0, 1000),
                 source: 'tag'
@@ -1061,8 +1101,14 @@ function extractGenshinImageCandidates(html, baseUrl) {
             continue;
         }
 
+        const normalizedUrl = safeNormalizeUrl(match[0], baseUrl);
+
+        if (!normalizedUrl) {
+            continue;
+        }
+
         candidates.push({
-            url: normalizeUrl(match[0], baseUrl),
+            url: normalizedUrl,
             index: match.index || 0,
             context: getTextContext(normalizedHtml, match.index || 0, 1000),
             source: 'raw'
@@ -1165,7 +1211,10 @@ function isLikelyGenshinMainImageUrl(imageUrl, context) {
         || lowerUrl.includes('emoji')
         || lowerUrl.includes('hoyoverse-account')
         || lowerUrl.includes('mihoyo-logo')
-        || lowerUrl.includes('hoyoverse-logo')) {
+        || lowerUrl.includes('hoyoverse-logo')
+        || lowerUrl.includes('youtube.com')
+        || lowerUrl.includes('youtu.be')
+        || lowerUrl.includes('ytimg.com')) {
         return false;
     }
 
@@ -1184,6 +1233,10 @@ function getGenshinImageScore(imageUrl, index, context, source) {
     const lowerUrl = String(imageUrl || '').toLowerCase();
     const lowerContext = String(context || '').toLowerCase();
     let score = 0;
+
+    if (lowerUrl.includes('/content-v2/')) {
+        score += 220;
+    }
 
     if (lowerUrl.includes('upload-static.hoyoverse.com')) {
         score += 160;
@@ -1259,6 +1312,15 @@ function getGenshinImageScore(imageUrl, index, context, source) {
         || lowerUrl.includes('common')
         || lowerUrl.includes('header')
         || lowerUrl.includes('footer')) {
+        score -= 120;
+    }
+
+    if (lowerUrl.includes('screenshot')
+        || lowerUrl.includes('fullpage')
+        || lowerUrl.includes('capture')
+        || lowerContext.includes('screenshot')
+        || lowerContext.includes('fullpage')
+        || lowerContext.includes('capture')) {
         score -= 120;
     }
 
@@ -1369,6 +1431,18 @@ function extractGenshinNewsId(url) {
     }
 
     return match[1];
+}
+
+function buildGenshinArticleUrl(articleId, rawUrl) {
+    if (articleId) {
+        return `${GENSHIN_SITE_ROOT}/ja/news/detail/${articleId}`;
+    }
+
+    if (rawUrl) {
+        return normalizeUrl(rawUrl, GENSHIN_SITE_ROOT);
+    }
+
+    return '';
 }
 
 function buildGenshinContentListApiUrl(categoryId, pageSize) {
@@ -1519,6 +1593,7 @@ async function fetchText(url) {
         const response = await fetch(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 discord-patchnote-bot',
+                'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.5,en;q=0.3',
                 'Accept': 'text/html,application/xhtml+xml,application/xml,application/json;q=0.9,*/*;q=0.8'
             }
         });
@@ -1724,6 +1799,14 @@ function normalizeUrl(url, baseUrl) {
     return new URL(url, baseUrl).toString();
 }
 
+function safeNormalizeUrl(url, baseUrl) {
+    try {
+        return normalizeUrl(url, baseUrl);
+    } catch (error) {
+        return '';
+    }
+}
+
 function htmlToText(html) {
     return cleanupText(
         String(html || '')
@@ -1747,6 +1830,18 @@ function cleanupLodestoneNewsTitle(text) {
         .replace(/\s*-\s*The Lodestone.*$/i, '')
         .replace(/\s*document\.getElementById[\s\S]*$/g, '')
         .trim();
+}
+
+function isFf14MaintenanceNewsTitle(title) {
+    const normalizedTitle = cleanupText(title);
+    const isWorldOrDataCenterMaintenance = normalizedTitle.includes('ワールド')
+        || normalizedTitle.includes('データセンター');
+
+    return isWorldOrDataCenterMaintenance
+        && (
+            normalizedTitle.includes('メンテナンス作業')
+            || normalizedTitle.includes('緊急メンテナンス')
+        );
 }
 
 function extractFf14MaintenanceDescription(text) {
@@ -1823,6 +1918,70 @@ function getRiotTitlePatterns(game) {
         /リーグ・オブ・レジェンド\s*パッチノート\s*\d+(?:\.\d+)?/,
         /パッチノート\s*\d+(?:\.\d+)?/
     ];
+}
+
+function getJapaneseFallbackTitle(title) {
+    const cleanedTitle = cleanupText(title);
+
+    if (!containsJapaneseText(cleanedTitle)) {
+        return '';
+    }
+
+    return cleanedTitle;
+}
+
+function extractRiotJapaneseDescription(articleHtml) {
+    const paragraphTexts = extractHtmlTagTexts(articleHtml, 'p');
+
+    for (const paragraphText of paragraphTexts) {
+        const cleanedText = cleanupText(paragraphText);
+
+        if (!containsJapaneseText(cleanedText)) {
+            continue;
+        }
+
+        if (cleanedText.length < 20 || cleanedText.length > 220) {
+            continue;
+        }
+
+        if (isRiotBoilerplateText(cleanedText)) {
+            continue;
+        }
+
+        return cleanedText;
+    }
+
+    return '';
+}
+
+function extractHtmlTagTexts(html, tagName) {
+    const texts = [];
+    const pattern = new RegExp(`<${escapeRegex(tagName)}\\b[^>]*>([\\s\\S]*?)<\\/${escapeRegex(tagName)}>`, 'gi');
+
+    for (const match of String(html || '').matchAll(pattern)) {
+        if (match && match[1]) {
+            texts.push(htmlToText(match[1]));
+        }
+    }
+
+    return texts;
+}
+
+function containsJapaneseText(text) {
+    return /[\u3040-\u30ff\u3400-\u9fff]/.test(String(text || ''));
+}
+
+function isRiotBoilerplateText(text) {
+    const cleanedText = cleanupText(text);
+
+    if (/^(パッチノート|チームファイト\s*タクティクス|リーグ・オブ・レジェンド)$/i.test(cleanedText)) {
+        return true;
+    }
+
+    return cleanedText.includes('この記事を共有')
+        || cleanedText.includes('パッチノート一覧')
+        || cleanedText.includes('Riot Games')
+        || cleanedText.includes('All Rights Reserved');
 }
 
 function extractRiotVersion(url, label, game) {
