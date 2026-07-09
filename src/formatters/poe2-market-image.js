@@ -267,3 +267,10 @@ function escapeXml(value) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;');
 }
+
+export const __testables = {
+    buildFooterText,
+    buildSnapshotSourceText,
+    formatPrice,
+    truncateLabel
+};
