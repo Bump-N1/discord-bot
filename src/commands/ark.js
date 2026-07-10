@@ -9,8 +9,10 @@ import {
 import { buildArkBackupUrl, buildArkEditUrl } from '../services/act/act-web-auth.js';
 import { registerEphemeralWebReply } from '../services/act/ephemeral-web-link.js';
 import {
+    buildArkBackupFailureNotificationMessage,
     buildArkBackupNotificationMessage,
-    createArkBackup
+    isArkBackupAlreadyRunningError,
+    startArkBackup
 } from '../services/ark/ark-backup-service.js';
 import {
     buildArkRebootNotificationMessage,
@@ -114,25 +116,33 @@ export async function handleArkRebootCommand(interaction) {
 }
 
 export async function handleArkBackupCommand(interaction) {
-    await interaction.deferReply({
-        flags: MessageFlags.Ephemeral
-    });
-
+    const reason = '手動バックアップ';
     try {
-        const result = await createArkBackup({
-            reason: '手動バックアップ',
+        const backup = await startArkBackup({
+            reason: reason,
             actorId: interaction.user.id,
             actorName: interaction.member?.displayName || interaction.user.displayName || interaction.user.username
         });
 
-        await postArkNotification(interaction.client, buildArkBackupNotificationMessage(result));
-        await interaction.editReply({
-            content: `バックアップを作成しました。保存日時：${formatDateTime(result.createdAt)} / ${formatBytes(result.totalBytes)}`
+        watchArkBackupTask(interaction.client, backup.task, reason);
+
+        await interaction.reply({
+            content: 'ARKバックアップを開始しました。完了後、ARK通知チャンネルに結果を投稿します。',
+            flags: MessageFlags.Ephemeral
         });
     } catch (error) {
-        console.error('ARK backup failed:', error);
-        await interaction.editReply({
-            content: `ARKバックアップに失敗しました。${error.message}`
+        if (isArkBackupAlreadyRunningError(error)) {
+            await interaction.reply({
+                content: 'ARKバックアップは現在実行中です。完了後にもう一度試してください。',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        console.error('ARK backup start failed:', error);
+        await interaction.reply({
+            content: `ARKバックアップを開始できませんでした。${error.message}`,
+            flags: MessageFlags.Ephemeral
         });
     }
 }
@@ -314,20 +324,6 @@ function formatDateTime(value) {
     }).format(date);
 }
 
-function formatBytes(value) {
-    const bytes = Number(value) || 0;
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let size = bytes;
-    let unitIndex = 0;
-
-    while (size >= 1024 && unitIndex < units.length - 1) {
-        size /= 1024;
-        unitIndex += 1;
-    }
-
-    return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
 function formatValue(value) {
     return String(value || '').trim() || EMPTY_VALUE;
 }
@@ -354,5 +350,23 @@ async function postArkNotification(client, content) {
 
     await channel.send({
         content: content
+    });
+}
+
+function watchArkBackupTask(client, task, reason) {
+    void task.then(async function(result) {
+        try {
+            await postArkNotification(client, buildArkBackupNotificationMessage(result));
+        } catch (notificationError) {
+            console.error('ARK backup notification failed:', notificationError);
+        }
+    }).catch(async function(error) {
+        console.error('ARK backup failed:', error);
+
+        try {
+            await postArkNotification(client, buildArkBackupFailureNotificationMessage(reason, error));
+        } catch (notificationError) {
+            console.error('ARK backup failure notification failed:', notificationError);
+        }
     });
 }
