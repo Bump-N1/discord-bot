@@ -36,8 +36,21 @@ const TERMINAL_SERVICE_STATUSES = new Set([
 ]);
 
 export async function createArkBackup(options = {}) {
+    const backup = await startArkBackup(options);
+
+    return backup.task;
+}
+
+export async function startArkBackup(options = {}) {
     const config = getArkConfig();
     const releaseLock = await acquireArkBackupLock(config);
+
+    return {
+        task: runArkBackup(config, releaseLock, options)
+    };
+}
+
+async function runArkBackup(config, releaseLock, options = {}) {
     let completed = false;
     let partialDirectory = '';
 
