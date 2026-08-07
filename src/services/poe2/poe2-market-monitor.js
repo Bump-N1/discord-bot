@@ -36,12 +36,14 @@ export async function postCurrentPoe2MarketImage(client, channelId, guildId) {
         throw new Error('PoE2 market products are not configured.');
     }
 
-    const snapshot = await fetchPoe2MarketSnapshot(settings.selectedProducts);
+    const snapshot = await fetchPoe2MarketSnapshot(settings.selectedProducts, new Date(), {
+        realm: settings.realm
+    });
     const image = await buildPoe2MarketImage(snapshot, {
         userAgent: config.userAgent
     });
 
-    await sendSnapshotImage(client, channelId, image);
+    await sendSnapshotImage(client, channelId, image, snapshot, config.alertPercent);
 
     return snapshot;
 }
@@ -76,7 +78,9 @@ async function runPoe2MarketMonitorTick(client) {
                 continue;
             }
 
-            const snapshot = await fetchPoe2MarketSnapshot(group.settings.selectedProducts);
+            const snapshot = await fetchPoe2MarketSnapshot(group.settings.selectedProducts, new Date(), {
+                realm: group.settings.realm
+            });
             const targets = dueSubscriptions.filter(function(subscription) {
                 return subscription.lastPostedChangeId !== snapshot.changeId;
             });
@@ -91,7 +95,7 @@ async function runPoe2MarketMonitorTick(client) {
 
             for (const subscription of targets) {
                 try {
-                    await sendSnapshotImage(client, subscription.channelId, image);
+                    await sendSnapshotImage(client, subscription.channelId, image, snapshot, config.alertPercent);
                     await markPoe2MarketPosted(subscription.channelId, snapshot.changeId);
                 } catch (error) {
                     console.error(`PoE2 market post failed for channel ${subscription.channelId}:`, error);
@@ -115,7 +119,7 @@ async function buildSubscriptionGroups(subscriptions) {
         }
 
         const settings = settingsByGuild.get(guildId);
-        const settingsKey = `${settings.postIntervalHours}:` + settings.selectedProducts.map(function(product) {
+        const settingsKey = `${settings.realm}:${settings.postIntervalHours}:` + settings.selectedProducts.map(function(product) {
             return product.id;
         }).join('|');
         const group = groups.get(settingsKey) || {
@@ -140,7 +144,7 @@ function isPostDue(subscription, postIntervalHours) {
     return Date.now() - lastPostedAt >= postIntervalHours * 60 * 60 * 1000;
 }
 
-async function sendSnapshotImage(client, channelId, image) {
+async function sendSnapshotImage(client, channelId, image, snapshot, alertPercent) {
     const channel = await client.channels.fetch(channelId);
 
     if (!channel?.isTextBased?.()) {
@@ -148,6 +152,7 @@ async function sendSnapshotImage(client, channelId, image) {
     }
 
     await channel.send({
+        content: buildPriceAlertText(snapshot, alertPercent) || undefined,
         files: [
             new AttachmentBuilder(image, {
                 name: 'poe2-market.png'
@@ -156,11 +161,38 @@ async function sendSnapshotImage(client, channelId, image) {
     });
 }
 
+function buildPriceAlertText(snapshot, threshold) {
+    const limit = Number(threshold);
+
+    if (!Number.isFinite(limit) || limit <= 0) {
+        return '';
+    }
+
+    const alerts = [];
+    for (const product of snapshot?.products || []) {
+        const changes = Object.values(product.prices || {}).map(function(price) {
+            return Number(price?.changePercent);
+        }).filter(Number.isFinite);
+        const change = changes.sort(function(left, right) {
+            return Math.abs(right) - Math.abs(left);
+        })[0];
+
+        if (Number.isFinite(change) && Math.abs(change) >= limit) {
+            alerts.push(`• ${product.label}: ${change >= 0 ? '+' : ''}${change.toFixed(1)}%`);
+        }
+    }
+
+    return alerts.length > 0
+        ? `⚠️ **PoE2相場変動（前時間比）**\n${alerts.slice(0, 8).join('\n')}`
+        : '';
+}
+
 function logMonitorError(error) {
     console.error('PoE2 market monitor failed:', error);
 }
 
 export const __testables = {
+    buildPriceAlertText,
     buildSubscriptionGroups,
     isPostDue
 };

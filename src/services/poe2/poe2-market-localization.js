@@ -496,6 +496,7 @@ export async function localizePoe2MarketProducts(products, userAgent) {
         return metadata
             ? {
                 ...product,
+                baseItemId: product.baseItemId || metadata.baseItemId,
                 label: metadata.label,
                 category: metadata.category,
                 sourceCategory: metadata.sourceCategory,
@@ -625,6 +626,7 @@ async function fetchPoe2MarketProducts(userAgent) {
 
             products.push({
                 id: id,
+                baseItemId: extractBaseItemId(image),
                 label: label,
                 category: mapped.category,
                 sourceCategory: String(group.id || ''),
@@ -639,6 +641,25 @@ async function fetchPoe2MarketProducts(userAgent) {
     }
 
     return products;
+}
+
+function extractBaseItemId(image) {
+    try {
+        const encoded = String(image || '').match(/\/gen\/image\/([^/]+)/u)?.[1];
+
+        if (!encoded) {
+            return '';
+        }
+
+        const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+        const file = String(payload?.[2]?.f || '');
+
+        return file.startsWith('2DItems/')
+            ? `Metadata/Items/${file.slice('2DItems/'.length)}`
+            : '';
+    } catch (error) {
+        return '';
+    }
 }
 
 function shouldExcludeMarketProduct(id) {

@@ -9,6 +9,7 @@ import {
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const STORE_PATH = path.join(DATA_DIR, 'poe2-market.json');
 const SETTINGS_HISTORY_LIMIT = 10;
+const ALLOWED_REALMS = new Set(['poe2', 'xbox', 'sony']);
 let storeQueue = Promise.resolve();
 
 export async function getPoe2MarketSubscription(channelId) {
@@ -35,6 +36,7 @@ export async function getPoe2MarketSettings(guildId) {
         guildId: guildId,
         selectedProducts: [],
         postIntervalHours: POE2_MARKET_DEFAULT_POST_INTERVAL_HOURS,
+        realm: 'poe2',
         history: [],
         configured: false
     };
@@ -58,7 +60,8 @@ export async function savePoe2MarketSettings(guildId, selectedProducts, updatedB
             selectedLabels: selectedProducts.map(function(product) {
                 return product.label;
             }),
-            postIntervalHours: postIntervalHours
+            postIntervalHours: postIntervalHours,
+            realm: normalizeRealm(options.realm)
         };
         const settings = {
             guildId: guildId,
@@ -67,6 +70,7 @@ export async function savePoe2MarketSettings(guildId, selectedProducts, updatedB
             updatedByName: historyEntry.updatedByName,
             updatedAt: updatedAt,
             postIntervalHours: postIntervalHours,
+            realm: normalizeRealm(options.realm),
             history: [historyEntry, ...currentSettings.history].slice(0, SETTINGS_HISTORY_LIMIT),
             configured: true
         };
@@ -158,10 +162,15 @@ function normalizeSettings(settings) {
     return {
         ...settings,
         postIntervalHours: normalizePostIntervalHours(settings.postIntervalHours),
+        realm: normalizeRealm(settings.realm),
         history: Array.isArray(settings.history)
             ? settings.history.slice(0, SETTINGS_HISTORY_LIMIT)
             : []
     };
+}
+
+function normalizeRealm(value) {
+    return ALLOWED_REALMS.has(String(value || '')) ? String(value) : 'poe2';
 }
 
 function normalizePostIntervalHours(value) {

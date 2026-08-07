@@ -36,6 +36,10 @@ npm start
 
 環境変数の一覧は `.env.example` を参照。
 
+### PoE2相場
+
+相場はGGG公式の公開Currency Exchange CDNから取得するため、OAuthクライアントやアクセストークンは不要。`/poe2-edit`では表示アイテム、投稿間隔、PC／Xbox／PlayStationを設定できる。画像には確定した1時間の価格幅、取引量、在庫、前時間比を表示し、変動率が`POE2_MARKET_ALERT_PERCENT`以上の場合は自動警告する。`0`を指定すると警告を無効化できる。
+
 ## 運用
 
 Oracle Cloud上では配置先ディレクトリとPM2プロセス名を `discord-bot` で統一する。

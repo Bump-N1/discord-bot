@@ -259,6 +259,7 @@ async function handlePoe2MarketSettingsRequest(request, response) {
                 : []
         ));
         const postIntervalHours = Number(body.postIntervalHours);
+        const realm = String(body.realm || 'poe2');
 
         if (selectedProductIds.length > POE2_MARKET_MAX_PRODUCTS) {
             throw new Error(`表示できるアイテムは${POE2_MARKET_MAX_PRODUCTS}件までです。`);
@@ -268,6 +269,10 @@ async function handlePoe2MarketSettingsRequest(request, response) {
             || postIntervalHours < POE2_MARKET_MIN_POST_INTERVAL_HOURS
             || postIntervalHours > POE2_MARKET_MAX_POST_INTERVAL_HOURS) {
             throw new Error('投稿頻度は1時間から24時間の範囲で指定してください。');
+        }
+
+        if (!['poe2', 'xbox', 'sony'].includes(realm)) {
+            throw new Error('プラットフォームが正しくありません。');
         }
 
         const catalog = await fetchPoe2MarketCatalog();
@@ -282,6 +287,7 @@ async function handlePoe2MarketSettingsRequest(request, response) {
 
         const settings = await savePoe2MarketSettings(payload.guildId, selectedProducts, payload.userId, {
             postIntervalHours: postIntervalHours,
+            realm: realm,
             updatedByName: payload.displayName
         });
 
@@ -476,7 +482,8 @@ async function buildPoe2MarketSession(payload, catalog, settings, token) {
             updatedAt: entry.updatedAt,
             selectedCount: entry.selectedCount,
             selectedLabels: await localizePoe2MarketLabelTexts(selectedLabels, userAgent),
-            postIntervalHours: entry.postIntervalHours
+            postIntervalHours: entry.postIntervalHours,
+            realm: entry.realm
         };
     }));
 
@@ -497,6 +504,7 @@ async function buildPoe2MarketSession(payload, catalog, settings, token) {
             return product.id;
         }),
         postIntervalHours: settings.postIntervalHours,
+        realm: settings.realm,
         history: history,
         configured: Boolean(settings.configured)
     };

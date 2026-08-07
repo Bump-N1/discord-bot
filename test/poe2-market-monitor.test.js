@@ -27,6 +27,21 @@ afterEach(async function() {
 });
 
 describe('PoE2 market monitor helpers', function() {
+    it('閾値を超えた前時間比だけ警告文にする', function() {
+        expect(monitor.__testables.buildPriceAlertText({
+            products: [{
+                label: 'Divine Orb',
+                prices: {
+                    exalted: { changePercent: -12.34 }
+                }
+            }, {
+                label: 'Chaos Orb',
+                prices: {
+                    exalted: { changePercent: 3 }
+                }
+            }]
+        }, 10)).toContain('Divine Orb: -12.3%');
+    });
     it('同じギルド設定の購読をまとめ、投稿頻度と選択アイテムが違えば分ける', async function() {
         await store.savePoe2MarketSettings('guild-a', [
             {
