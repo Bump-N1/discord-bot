@@ -14,6 +14,7 @@ const elements = {
     errorText: document.querySelector('#errorText'),
     settingsForm: document.querySelector('#settingsForm'),
     leagueBadge: document.querySelector('#leagueBadge'),
+    realm: document.querySelector('#realm'),
     postIntervalHours: document.querySelector('#postIntervalHours'),
     categoryToggle: document.querySelector('#categoryToggle'),
     categoryBackdrop: document.querySelector('#categoryBackdrop'),
@@ -69,6 +70,7 @@ function render() {
     elements.errorView.classList.add('hidden');
     elements.settingsForm.classList.remove('hidden');
     elements.leagueBadge.textContent = state.session.league;
+    elements.realm.value = state.session.realm || 'poe2';
     renderPostIntervals();
     renderCategories();
     syncCategoryMenu();
@@ -510,7 +512,7 @@ function renderHistory() {
         actor.className = 'history-actor';
         actor.textContent = entry.updatedByName || '不明なユーザー';
         summary.className = 'history-summary';
-        summary.textContent = `表示 ${entry.selectedCount}件 / ${entry.postIntervalHours}時間ごと`;
+        summary.textContent = `表示 ${entry.selectedCount}件 / ${formatRealm(entry.realm)} / ${entry.postIntervalHours}時間ごと`;
         datetime.className = 'history-time';
         datetime.dateTime = entry.updatedAt;
         datetime.textContent = formatHistoryDateTime(entry.updatedAt);
@@ -534,7 +536,8 @@ async function saveSettings(event) {
             body: {
                 token: token,
                 selectedProductIds: Array.from(state.selected),
-                postIntervalHours: Number(elements.postIntervalHours.value)
+                postIntervalHours: Number(elements.postIntervalHours.value),
+                realm: elements.realm.value
             }
         });
         state.selected = new Set(state.session.selectedProductIds);
@@ -553,6 +556,14 @@ async function saveSettings(event) {
     } finally {
         elements.saveButton.disabled = false;
     }
+}
+
+function formatRealm(realm) {
+    return {
+        poe2: 'PC',
+        xbox: 'Xbox',
+        sony: 'PlayStation'
+    }[realm] || 'PC';
 }
 
 async function request(url, options = {}) {

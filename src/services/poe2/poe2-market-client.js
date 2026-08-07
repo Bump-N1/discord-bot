@@ -1,6 +1,5 @@
 import {
     getPoe2MarketConfig,
-    shouldUseOfficialMarketApi,
     validatePoe2MarketConfig
 } from './poe2-market-config.js';
 import {
@@ -15,8 +14,7 @@ import {
     localizePoe2MarketProducts
 } from './poe2-market-localization.js';
 
-const TOKEN_URL = 'https://www.pathofexile.com/oauth/token';
-const API_ROOT = 'https://api.pathofexile.com';
+const CURRENCY_EXCHANGE_CDN_ROOT = 'https://web.poecdn.com/api/currency-exchange';
 const POE_NINJA_API_ROOT = 'https://poe.ninja/poe2/api/economy/exchange/current/overview';
 const POE_NINJA_INDEX_STATE_URL = 'https://poe.ninja/poe2/api/data/index-state?';
 const POE_NINJA_IMAGE_ROOT = 'https://www.pathofexile.com';
@@ -47,7 +45,6 @@ const POE_NINJA_SOURCE_CATEGORY_BY_DISPLAY_CATEGORY = {
     SoulCores: 'SoulCores',
     Idols: 'Idols'
 };
-let requestedAccessToken = null;
 let cachedCatalog = null;
 let cachedAutoLeague = null;
 
@@ -130,8 +127,12 @@ async function loadPoeNinjaCatalogProducts(config) {
     return await localizePoe2MarketProducts(Array.from(productMap.values()), config.userAgent);
 }
 
-export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()) {
-    const config = await resolvePoe2MarketConfig(getPoe2MarketConfig());
+export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date(), options = {}) {
+    const baseConfig = getPoe2MarketConfig();
+    const config = await resolvePoe2MarketConfig({
+        ...baseConfig,
+        realm: options.realm || baseConfig.realm
+    });
 
     validatePoe2MarketConfig(config);
     requireSelectedProducts(selectedProducts);
@@ -139,24 +140,12 @@ export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()
         .map(normalizeMarketProductCategory)
         .sort(compareCatalogProducts);
 
-    if (!shouldUseOfficialMarketApi(config)) {
-        return await fetchPoeNinjaMarketSnapshot(config, localizedProducts, now);
-    }
-
     return await fetchOfficialMarketSnapshot(config, localizedProducts, now);
 }
 
 async function resolvePoe2MarketConfig(config) {
     validatePoe2MarketConfig(config);
-
-    if (config.league.toLowerCase() !== AUTO_LEAGUE) {
-        return config;
-    }
-
-    return {
-        ...config,
-        league: await fetchAutomaticLeague(config)
-    };
+    return config;
 }
 
 async function fetchAutomaticLeague(config) {
@@ -211,16 +200,26 @@ function requireSelectedProducts(selectedProducts) {
 }
 
 async function fetchOfficialMarketSnapshot(config, selectedProducts, now) {
-    const accessToken = await getAccessToken(config);
     const latestCompletedHour = getLatestCompletedHour(now);
     const quotesByProductId = new Map();
     let availableHour = null;
+    let league = config.league;
+    let previousMarkets = [];
 
     for (let index = 0; index < config.lookbackHours; index += 1) {
         const changeId = latestCompletedHour - (index * HOUR_SECONDS);
-        const response = await fetchExchangeDigest(config, accessToken, changeId);
+        let response;
+        try {
+            response = await fetchExchangeDigest(config, changeId);
+        } catch (error) {
+            console.warn(`PoE2 Currency Exchange hour ${changeId} could not be loaded:`, error.message);
+            continue;
+        }
+        if (league.toLowerCase() === AUTO_LEAGUE) {
+            league = detectChallengeLeague(response.markets);
+        }
         const leagueMarkets = (response.markets || []).filter(function(market) {
-            return market.league === config.league;
+            return market.league === league;
         });
 
         if (availableHour === null) {
@@ -231,7 +230,20 @@ async function fetchOfficialMarketSnapshot(config, selectedProducts, now) {
             availableHour = changeId;
         }
 
-        collectOfficialQuotes(leagueMarkets, changeId, selectedProducts, quotesByProductId);
+        if (availableHour === changeId) {
+            collectOfficialQuotes(leagueMarkets, changeId, selectedProducts, quotesByProductId);
+            try {
+                const previous = await fetchExchangeDigest(config, changeId - HOUR_SECONDS);
+                previousMarkets = (previous.markets || []).filter(function(market) {
+                    return market.league === league;
+                });
+                applyPreviousHourChanges(selectedProducts, quotesByProductId, previousMarkets);
+            } catch (error) {
+                console.warn(`PoE2 previous Currency Exchange hour could not be loaded:`, error.message);
+            }
+        } else {
+            collectMissingOfficialQuotes(leagueMarkets, changeId, selectedProducts, quotesByProductId);
+        }
 
         if (hasAllOfficialQuotes(selectedProducts, quotesByProductId)) {
             break;
@@ -239,12 +251,13 @@ async function fetchOfficialMarketSnapshot(config, selectedProducts, now) {
     }
 
     if (availableHour === null) {
-        throw new Error(`No Currency Exchange history was found for league: ${config.league}.`);
+        throw new Error(`No Currency Exchange history was found for league: ${league}.`);
     }
 
     return {
         source: 'official',
-        league: config.league,
+        realm: config.realm,
+        league: league,
         changeId: String(availableHour),
         completedHour: availableHour,
         products: selectedProducts.map(function(product) {
@@ -500,63 +513,49 @@ function createPrice(value, quoteChangeId) {
     };
 }
 
-async function getAccessToken(config) {
-    if (config.accessToken) {
-        return config.accessToken;
-    }
+async function fetchExchangeDigest(config, changeId) {
+    const url = `${CURRENCY_EXCHANGE_CDN_ROOT}/${config.realm}/${changeId}`;
+    let lastError;
 
-    if (!requestedAccessToken) {
-        requestedAccessToken = requestAccessToken(config).catch(function(error) {
-            requestedAccessToken = null;
-            throw error;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': config.userAgent,
+                Accept: 'application/json'
+            }
         });
-    }
 
-    return await requestedAccessToken;
-}
-
-async function requestAccessToken(config) {
-    const body = new URLSearchParams({
-        client_id: config.clientId,
-        client_secret: config.clientSecret,
-        grant_type: 'client_credentials',
-        scope: 'service:cxapi'
-    });
-    const response = await fetch(TOKEN_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': config.userAgent
-        },
-        body: body.toString()
-    });
-
-    if (!response.ok) {
-        throw await buildResponseError('PoE2 OAuth token request failed', response);
-    }
-
-    const payload = await response.json();
-
-    if (!payload.access_token) {
-        throw new Error('PoE2 OAuth token response does not contain access_token.');
-    }
-
-    return payload.access_token;
-}
-
-async function fetchExchangeDigest(config, accessToken, changeId) {
-    const response = await fetch(`${API_ROOT}/currency-exchange/poe2/${changeId}`, {
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'User-Agent': config.userAgent
+        if (response.ok) {
+            return await response.json();
         }
-    });
 
-    if (!response.ok) {
-        throw await buildResponseError('PoE2 currency exchange request failed', response);
+        lastError = await buildResponseError('PoE2 currency exchange request failed', response);
+        if (response.status < 500 && response.status !== 429) {
+            break;
+        }
+        await delay(250 * (attempt + 1));
     }
 
-    return await response.json();
+    throw lastError;
+}
+
+function delay(milliseconds) {
+    return new Promise(function(resolve) {
+        setTimeout(resolve, milliseconds);
+    });
+}
+
+function detectChallengeLeague(markets) {
+    const permanentLeagues = new Set(['Standard', 'Hardcore']);
+    const leagues = Array.from(new Set((markets || []).map(function(market) {
+        return String(market.league || '');
+    }).filter(Boolean)));
+
+    return leagues.find(function(league) {
+        return !permanentLeagues.has(league) && !/SSF|Hardcore/u.test(league);
+    }) || leagues.find(function(league) {
+        return !permanentLeagues.has(league);
+    }) || leagues[0] || '';
 }
 
 function collectOfficialQuotes(markets, changeId, selectedProducts, quotesByProductId) {
@@ -569,7 +568,7 @@ function collectOfficialQuotes(markets, changeId, selectedProducts, quotesByProd
             }
 
             const market = markets.find(function(entry) {
-                return isMarketPair(entry.market_id, product.id, currencyId);
+                return isMarketPair(entry, getProductMarketId(product), getQuoteMarketId(currencyId));
             });
 
             if (!market) {
@@ -577,8 +576,8 @@ function collectOfficialQuotes(markets, changeId, selectedProducts, quotesByProd
             }
 
             const prices = [
-                calculatePriceInCurrency(market.lowest_ratio, product.id, currencyId),
-                calculatePriceInCurrency(market.highest_ratio, product.id, currencyId)
+                calculatePriceInCurrency(market.lowest_ratio, getProductMarketId(product), getQuoteMarketId(currencyId)),
+                calculatePriceInCurrency(market.highest_ratio, getProductMarketId(product), getQuoteMarketId(currencyId))
             ].filter(function(value) {
                 return Number.isFinite(value);
             });
@@ -590,11 +589,51 @@ function collectOfficialQuotes(markets, changeId, selectedProducts, quotesByProd
             quotes[currencyId] = {
                 lowestPrice: Math.min(...prices),
                 highestPrice: Math.max(...prices),
-                quoteChangeId: changeId
+                quoteChangeId: changeId,
+                volume: Number(market.volume_traded?.[getProductMarketId(product)]) || 0,
+                quoteVolume: Number(market.volume_traded?.[getQuoteMarketId(currencyId)]) || 0,
+                lowestStock: Number(market.lowest_stock?.[getProductMarketId(product)]) || 0,
+                highestStock: Number(market.highest_stock?.[getProductMarketId(product)]) || 0,
+                changePercent: null
             };
         }
 
         quotesByProductId.set(product.id, quotes);
+    }
+}
+
+function collectMissingOfficialQuotes(markets, changeId, selectedProducts, quotesByProductId) {
+    collectOfficialQuotes(markets, changeId, selectedProducts, quotesByProductId);
+}
+
+function applyPreviousHourChanges(selectedProducts, quotesByProductId, markets) {
+    for (const product of selectedProducts) {
+        const quotes = quotesByProductId.get(product.id) || {};
+
+        for (const currencyId of QUOTE_CURRENCY_IDS) {
+            const current = quotes[currencyId];
+            if (!current || product.id === currencyId) {
+                continue;
+            }
+
+            const market = markets.find(function(entry) {
+                return isMarketPair(entry, getProductMarketId(product), getQuoteMarketId(currencyId));
+            });
+            if (!market) {
+                continue;
+            }
+
+            const previousValues = [
+                calculatePriceInCurrency(market.lowest_ratio, getProductMarketId(product), getQuoteMarketId(currencyId)),
+                calculatePriceInCurrency(market.highest_ratio, getProductMarketId(product), getQuoteMarketId(currencyId))
+            ].filter(Number.isFinite);
+            const previous = average(previousValues);
+            const currentValue = average([current.lowestPrice, current.highestPrice]);
+
+            if (previous > 0 && currentValue > 0) {
+                current.changePercent = ((currentValue - previous) / previous) * 100;
+            }
+        }
     }
 }
 
@@ -610,10 +649,31 @@ function buildOfficialProductPrices(product, quotesByProductId, quoteChangeId) {
     }));
 }
 
-function isMarketPair(marketId, productId, currencyId) {
-    const ids = String(marketId || '').split('|');
+function isMarketPair(market, productId, currencyId) {
+    const ids = Array.isArray(market?.market_pair)
+        ? market.market_pair
+        : String(market?.market_id || '').split('|');
 
     return ids.includes(productId) && ids.includes(currencyId);
+}
+
+function getProductMarketId(product) {
+    return product.baseItemId || getQuoteMarketId(product.id) || product.id;
+}
+
+function getQuoteMarketId(currencyId) {
+    return {
+        exalted: 'Metadata/Items/Currency/CurrencyAddModToRare',
+        divine: 'Metadata/Items/Currency/CurrencyModValues',
+        chaos: 'Metadata/Items/Currency/CurrencyRerollRare'
+    }[currencyId] || '';
+}
+
+function average(values) {
+    const finite = values.filter(Number.isFinite);
+    return finite.length > 0 ? finite.reduce(function(total, value) {
+        return total + value;
+    }, 0) / finite.length : 0;
 }
 
 function calculatePriceInCurrency(ratio, productId, currencyId) {
@@ -658,5 +718,8 @@ export const __testables = {
     findLatestTradeChallengeLeague,
     getPoeNinjaSourceCategory,
     normalizeMarketProductCategory,
-    normalizePoeNinjaIconUrl
+    normalizePoeNinjaIconUrl,
+    detectChallengeLeague,
+    getQuoteMarketId,
+    isMarketPair
 };

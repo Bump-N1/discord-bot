@@ -8,10 +8,26 @@ const {
     findLatestTradeChallengeLeague,
     getPoeNinjaSourceCategory,
     normalizeMarketProductCategory,
-    normalizePoeNinjaIconUrl
+    normalizePoeNinjaIconUrl,
+    detectChallengeLeague,
+    getQuoteMarketId,
+    isMarketPair
 } = __testables;
 
 describe('PoE2 market client helpers', function() {
+    it('CDN market_pairの内部IDと自動リーグを解決する', function() {
+        expect(getQuoteMarketId('divine')).toBe('Metadata/Items/Currency/CurrencyModValues');
+        expect(isMarketPair({
+            market_pair: [
+                'Metadata/Items/Currency/CurrencyRerollRare',
+                'Metadata/Items/Currency/CurrencyModValues'
+            ]
+        }, 'Metadata/Items/Currency/CurrencyRerollRare', getQuoteMarketId('divine'))).toBe(true);
+        expect(detectChallengeLeague([
+            { league: 'Standard' },
+            { league: 'Runes of Aldur' }
+        ])).toBe('Runes of Aldur');
+    });
     it('auto leagueは常設/Hardcore/未indexを避けて最新チャレンジリーグを選ぶ', function() {
         expect(findLatestTradeChallengeLeague([
             {

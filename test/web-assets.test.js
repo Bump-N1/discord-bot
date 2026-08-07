@@ -12,6 +12,7 @@ describe('web assets', function() {
         expect(html).toContain('id="categoryToggle"');
         expect(html).toContain('id="categoryBackdrop"');
         expect(html).toContain('id="postIntervalHours"');
+        expect(html).toContain('id="realm"');
         expect(html).toContain('時間ごと');
         expect(html).toContain('id="searchInput"');
         expect(html).toContain('id="historyList"');

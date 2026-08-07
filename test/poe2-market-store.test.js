@@ -29,6 +29,7 @@ describe('PoE2 market store', function() {
             guildId: 'guild',
             selectedProducts: [],
             postIntervalHours: 1,
+            realm: 'poe2',
             history: [],
             configured: false
         });
@@ -47,7 +48,8 @@ describe('PoE2 market store', function() {
                 `user-${index}`,
                 {
                     updatedByName: `User ${index}`,
-                    postIntervalHours: index + 1
+                    postIntervalHours: index + 1,
+                    realm: index === 11 ? 'sony' : 'poe2'
                 }
             );
         }
@@ -63,6 +65,7 @@ describe('PoE2 market store', function() {
                 }
             ],
             postIntervalHours: 12,
+            realm: 'sony',
             configured: true
         });
         expect(settings.history).toHaveLength(10);

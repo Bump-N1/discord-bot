@@ -1,19 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
     getPoe2MarketConfig,
-    shouldUseOfficialMarketApi,
     validatePoe2MarketConfig
 } from '../src/services/poe2/poe2-market-config.js';
 
 const ENV_KEYS = [
-    'POE2_MARKET_PROVIDER',
-    'POE2_ACCESS_TOKEN',
-    'POE2_CLIENT_ID',
-    'POE2_CLIENT_SECRET',
     'POE2_LEAGUE',
+    'POE2_REALM',
     'POE2_USER_AGENT',
     'POE2_MARKET_MONITOR_INTERVAL_MS',
-    'POE2_MARKET_LOOKBACK_HOURS'
+    'POE2_MARKET_LOOKBACK_HOURS',
+    'POE2_MARKET_ALERT_PERCENT'
 ];
 
 const originalEnv = Object.fromEntries(ENV_KEYS.map(function(key) {
@@ -31,7 +28,7 @@ afterEach(function() {
 });
 
 describe('PoE2 market config', function() {
-    it('未設定時はauto provider / auto leagueを使う', function() {
+    it('未設定時は公開CDNのPC realm / auto leagueを使う', function() {
         for (const key of ENV_KEYS) {
             delete process.env[key];
         }
@@ -39,11 +36,12 @@ describe('PoE2 market config', function() {
         const config = getPoe2MarketConfig();
 
         expect(config).toMatchObject({
-            provider: 'auto',
             league: 'auto',
+            realm: 'poe2',
             userAgent: '',
             monitorIntervalMs: 300000,
-            lookbackHours: 24
+            lookbackHours: 24,
+            alertPercent: 10
         });
     });
 
@@ -57,62 +55,31 @@ describe('PoE2 market config', function() {
         expect(config.lookbackHours).toBe(24);
     });
 
-    it('providerと必須値を検証する', function() {
+    it('realmと必須値を検証する', function() {
         expect(function() {
             validatePoe2MarketConfig({
-                provider: 'bad',
+                realm: 'bad',
                 league: 'auto',
                 userAgent: 'discord-bot'
             });
-        }).toThrow('POE2_MARKET_PROVIDER must be poe-ninja, official or auto.');
+        }).toThrow('POE2_REALM must be poe2, xbox or sony.');
 
         expect(function() {
             validatePoe2MarketConfig({
-                provider: 'poe-ninja',
+                realm: 'poe2',
                 league: 'auto',
                 userAgent: ''
             });
         }).toThrow('POE2_USER_AGENT is not set.');
     });
 
-    it('official providerは認証情報を必須にする', function() {
+    it('公開CDNはOAuth認証情報なしで利用できる', function() {
         expect(function() {
             validatePoe2MarketConfig({
-                provider: 'official',
+                realm: 'sony',
                 league: 'auto',
-                userAgent: 'discord-bot',
-                accessToken: '',
-                clientId: '',
-                clientSecret: ''
-            });
-        }).toThrow('POE2_ACCESS_TOKEN or POE2_CLIENT_ID/POE2_CLIENT_SECRET is not set.');
-
-        expect(function() {
-            validatePoe2MarketConfig({
-                provider: 'official',
-                league: 'auto',
-                userAgent: 'discord-bot',
-                accessToken: 'token'
+                userAgent: 'discord-bot'
             });
         }).not.toThrow();
-    });
-
-    it('auto providerは認証情報がある時だけ公式APIを使う', function() {
-        expect(shouldUseOfficialMarketApi({
-            provider: 'auto',
-            accessToken: ''
-        })).toBe(false);
-        expect(shouldUseOfficialMarketApi({
-            provider: 'auto',
-            accessToken: 'token'
-        })).toBe(true);
-        expect(shouldUseOfficialMarketApi({
-            provider: 'poe-ninja',
-            accessToken: 'token'
-        })).toBe(false);
-        expect(shouldUseOfficialMarketApi({
-            provider: 'official',
-            accessToken: ''
-        })).toBe(true);
     });
 });

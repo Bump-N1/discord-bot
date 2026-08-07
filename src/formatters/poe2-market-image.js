@@ -7,7 +7,7 @@ import {
 
 const IMAGE_WIDTH = 900;
 const HEADER_HEIGHT = 176;
-const ROW_HEIGHT = 58;
+const ROW_HEIGHT = 70;
 const FOOTER_HEIGHT = 56;
 const JST_TIME_ZONE = 'Asia/Tokyo';
 const iconCache = new Map();
@@ -90,9 +90,10 @@ function buildProductRow(product, iconDataUrl, index, latestChangeId, exaltedRig
     const staleLabel = buildStaleLabel(exalted, divine, latestChangeId, divineRightX, y);
 
     return `
-    <rect x="40" y="${y}" width="820" height="55" rx="6" fill="${rowFill}"/>
+    <rect x="40" y="${y}" width="820" height="67" rx="6" fill="${rowFill}"/>
     ${icon}
-    <text x="108" y="${y + 34}" fill="#edf1f7" font-size="19" font-weight="600" font-family="${fontFamily()}">${escapeXml(truncateLabel(product.label))}</text>
+    <text x="108" y="${y + 30}" fill="#edf1f7" font-size="19" font-weight="600" font-family="${fontFamily()}">${escapeXml(truncateLabel(product.label))}</text>
+    <text x="108" y="${y + 52}" fill="#7f8da1" font-size="12" font-family="${fontFamily()}">${escapeXml(buildLiquidityText(exalted, divine))}</text>
     ${buildPriceText(exalted, exaltedRightX, y)}
     ${buildPriceText(divine, divineRightX, y)}
     ${staleLabel}`;
@@ -102,7 +103,34 @@ function buildPriceText(price, rightX, y) {
     const available = price?.lowestPrice !== null && price?.lowestPrice !== undefined;
     const value = escapeXml(formatPrice(price));
 
-    return `<text x="${rightX}" y="${y + 34}" text-anchor="end" fill="${available ? '#f1c76e' : '#728096'}" font-size="18" font-weight="600" font-family="${fontFamily()}">${value}</text>`;
+    const trend = available ? formatChange(price?.changePercent) : '';
+    const trendColor = Number(price?.changePercent) > 0 ? '#55c98b' : Number(price?.changePercent) < 0 ? '#ef7d7d' : '#7f8da1';
+
+    return `<text x="${rightX}" y="${y + 30}" text-anchor="end" fill="${available ? '#f1c76e' : '#728096'}" font-size="18" font-weight="600" font-family="${fontFamily()}">${value}</text>
+    <text x="${rightX}" y="${y + 52}" text-anchor="end" fill="${trendColor}" font-size="12" font-family="${fontFamily()}">${escapeXml(trend)}</text>`;
+}
+
+function buildLiquidityText(exalted, divine) {
+    const volume = Math.max(Number(exalted?.volume) || 0, Number(divine?.volume) || 0);
+    const stock = Math.max(Number(exalted?.highestStock) || 0, Number(divine?.highestStock) || 0);
+
+    if (volume <= 0 && stock <= 0) {
+        return '取引量なし';
+    }
+
+    return `1時間取引 ${formatCompactNumber(volume)} ・ 在庫 ${formatCompactNumber(stock)}`;
+}
+
+function formatChange(value) {
+    return Number.isFinite(Number(value))
+        ? `前時間比 ${Number(value) >= 0 ? '+' : ''}${Number(value).toFixed(1)}%`
+        : '';
+}
+
+function formatCompactNumber(value) {
+    return Number(value || 0).toLocaleString('ja-JP', {
+        maximumFractionDigits: 0
+    });
 }
 
 function buildStaleLabel(exalted, divine, latestChangeId, rightX, y) {
@@ -226,7 +254,15 @@ function buildFooterText(snapshot) {
         return '取得元: poe.ninja';
     }
 
-    return '取得元: Path of Exile 2 Currency Exchange / 1時間単位の確定履歴';
+    return `取得元: GGG Currency Exchange CDN / ${formatRealm(snapshot.realm)} / 1時間単位の確定履歴`;
+}
+
+function formatRealm(realm) {
+    return {
+        poe2: 'PC',
+        xbox: 'Xbox',
+        sony: 'PlayStation'
+    }[realm] || 'PC';
 }
 
 function formatCapturedAt(value) {
@@ -269,8 +305,10 @@ function escapeXml(value) {
 }
 
 export const __testables = {
+    buildLiquidityText,
     buildFooterText,
     buildSnapshotSourceText,
     formatPrice,
+    formatChange,
     truncateLabel
 };

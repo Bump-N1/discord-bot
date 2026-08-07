@@ -141,6 +141,7 @@ export function createPoe2MarketProduct(id, fields = {}) {
 
     return {
         id: String(id),
+        baseItemId: String(fields.baseItemId || known.baseItemId || ''),
         label: String(fields.label || known.label || formatProductId(id)),
         category: String(fields.category || known.category || 'Currency'),
         sourceCategory: String(fields.sourceCategory || known.sourceCategory || fields.category || known.category || 'Currency'),
