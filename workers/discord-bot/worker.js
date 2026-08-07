@@ -3,6 +3,10 @@ const LOCK_TTL_SECONDS = 180;
 const LOCK_TTL_MILLISECONDS = LOCK_TTL_SECONDS * 1000;
 const LOCK_CONFIRM_WAIT_MILLISECONDS = 700;
 const POSTED_HISTORY_LIMIT = 100;
+const FETCH_TIMEOUT_MILLISECONDS = 10000;
+const FETCH_RETRY_WAIT_MILLISECONDS = 1000;
+const FF14_MAINTENANCE_ARTICLE_TIMEOUT_MILLISECONDS = 8000;
+const DISCORD_POST_TIMEOUT_MILLISECONDS = 10000;
 const GENSHIN_APP_ID = 'a1b1f9d3315447cc';
 const GENSHIN_API_ROOT = 'https://sg-public-api-static.hoyoverse.com/content_v2_user';
 const GENSHIN_SITE_ROOT = 'https://genshin.hoyoverse.com';
@@ -66,6 +70,13 @@ const DISCORD_PRESENTATIONS = {
 
 const SOURCES = [
     {
+        game: 'FF14_MAINTENANCE',
+        url: 'https://jp.finalfantasyxiv.com/lodestone/news/category/2',
+        webhookEnvName: 'DISCORD_MAINTENANCE_FF14',
+        parser: parseFf14WorldMaintenance,
+        checkMultiple: true
+    },
+    {
         game: 'LoL',
         url: 'https://www.leagueoflegends.com/ja-jp/news/tags/patch-notes/',
         webhookEnvName: 'DISCORD_WEBHOOK_URL_LOL',
@@ -95,13 +106,6 @@ const SOURCES = [
         url: 'https://jp.finalfantasyxiv.com/lodestone/special/patchnote_log/',
         webhookEnvName: 'DISCORD_WEBHOOK_URL_FF14',
         parser: parseFf14PatchNotes
-    },
-    {
-        game: 'FF14_MAINTENANCE',
-        url: 'https://jp.finalfantasyxiv.com/lodestone/news/category/2',
-        webhookEnvName: 'DISCORD_MAINTENANCE_FF14',
-        parser: parseFf14WorldMaintenance,
-        checkMultiple: true
     },
     {
         game: 'Genshin_NOTICE',
@@ -844,21 +848,27 @@ async function parseFf14WorldMaintenance(html, baseUrl) {
         return null;
     }
 
-    const maintenancePatchNotes = [];
+    const maintenancePatchNotes = await Promise.all(maintenanceLinks.map(async function(maintenanceLink) {
+        let articleHtml = '';
 
-    for (const maintenanceLink of maintenanceLinks) {
-        const articleHtml = await fetchText(maintenanceLink.url);
+        try {
+            articleHtml = await fetchText(maintenanceLink.url, {
+                attempts: 1,
+                timeoutMilliseconds: FF14_MAINTENANCE_ARTICLE_TIMEOUT_MILLISECONDS
+            });
+        } catch (error) {
+            articleHtml = '';
+        }
 
         if (!articleHtml) {
-            maintenancePatchNotes.push({
+            return {
                 id: maintenanceLink.url,
                 title: maintenanceLink.title || 'FF14 メンテナンス情報更新',
                 description: '',
                 date: '',
                 url: maintenanceLink.url,
                 imageUrl: ''
-            });
-            continue;
+            };
         }
 
         const articleText = htmlToText(articleHtml);
@@ -872,15 +882,15 @@ async function parseFf14WorldMaintenance(html, baseUrl) {
             || extractMetaContent(articleHtml, 'name', 'description')
             || '';
 
-        maintenancePatchNotes.push({
+        return {
             id: maintenanceLink.url,
             title: cleanupLodestoneNewsTitle(title),
             description: cleanupText(description),
             date: '',
             url: maintenanceLink.url,
             imageUrl: ''
-        });
-    }
+        };
+    }));
 
     return maintenancePatchNotes;
 }
@@ -1578,13 +1588,24 @@ async function postToDiscord(webhookUrl, game, patchNote) {
     };
 
     for (let retryCount = 0; retryCount < 3; retryCount++) {
-        const response = await fetch(webhookUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
+        let response;
+
+        try {
+            response = await fetchWithTimeout(webhookUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            }, DISCORD_POST_TIMEOUT_MILLISECONDS);
+        } catch (error) {
+            if (retryCount < 2) {
+                await sleep(FETCH_RETRY_WAIT_MILLISECONDS);
+                continue;
+            }
+
+            throw new Error(`Discord post failed: ${error.message}`);
+        }
 
         if (response.ok) {
             return;
@@ -1604,29 +1625,70 @@ async function postToDiscord(webhookUrl, game, patchNote) {
     throw new Error('Discord post failed 429: retry limit exceeded');
 }
 
-async function fetchText(url) {
-    for (let retryCount = 0; retryCount < 3; retryCount++) {
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 discord-patchnote-bot',
-                'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.5,en;q=0.3',
-                'Accept': 'text/html,application/xhtml+xml,application/xml,application/json;q=0.9,*/*;q=0.8'
+async function fetchText(url, options = {}) {
+    const attempts = options.attempts || 3;
+    const timeoutMilliseconds = options.timeoutMilliseconds || FETCH_TIMEOUT_MILLISECONDS;
+    const retryWaitMilliseconds = options.retryWaitMilliseconds ?? FETCH_RETRY_WAIT_MILLISECONDS;
+
+    for (let retryCount = 0; retryCount < attempts; retryCount++) {
+        try {
+            const response = await fetchWithTimeout(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 discord-patchnote-bot',
+                    'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.5,en;q=0.3',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml,application/json;q=0.9,*/*;q=0.8',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            }, timeoutMilliseconds);
+
+            if (response.ok) {
+                return await response.text();
             }
-        });
 
-        if (response.ok) {
-            return await response.text();
+            if (retryCount < attempts - 1) {
+                await sleep(retryWaitMilliseconds);
+                continue;
+            }
+
+            throw new Error(`fetch failed: ${response.status} ${url}`);
+        } catch (error) {
+            if (retryCount < attempts - 1) {
+                await sleep(retryWaitMilliseconds);
+                continue;
+            }
+
+            if (error && String(error.message || '').startsWith('fetch failed:')) {
+                throw error;
+            }
+
+            throw new Error(`fetch failed: ${error.message} ${url}`);
         }
-
-        if (retryCount < 2) {
-            await sleep(1000);
-            continue;
-        }
-
-        throw new Error(`fetch failed: ${response.status} ${url}`);
     }
 
     return '';
+}
+
+async function fetchWithTimeout(url, options, timeoutMilliseconds) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(function() {
+        controller.abort();
+    }, timeoutMilliseconds);
+
+    try {
+        return await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+    } catch (error) {
+        if (error && error.name === 'AbortError') {
+            throw new Error(`timeout after ${timeoutMilliseconds}ms`);
+        }
+
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 function extractLinks(html, baseUrl) {
@@ -1841,6 +1903,7 @@ function cleanupText(text) {
 
 function cleanupLodestoneNewsTitle(text) {
     return cleanupText(text)
+        .replace(/^\[[^\]]+\]\s*/g, '')
         .replace(/\s*\|\s*FINAL FANTASY XIV.*$/i, '')
         .replace(/\s*-\s*FINAL FANTASY XIV.*$/i, '')
         .replace(/\s*-\s*The Lodestone.*$/i, '')
@@ -2219,6 +2282,7 @@ export const __testables = {
     isFf14MaintenanceNewsTitle,
     isPostedPatchNote,
     parseGenshinContentListApi,
+    parseFf14WorldMaintenance,
     parseOverwatchPatchNotes,
     uniquePatchNotes
 };

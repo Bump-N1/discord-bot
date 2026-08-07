@@ -1,7 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { __testables } from '../workers/discord-bot/worker.js';
 
 describe('patch note Worker', function() {
+    afterEach(function() {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
+    it('FF14メンテナンスは他の通知元より先に確認する', function() {
+        expect(__testables.SOURCES[0].game).toBe('FF14_MAINTENANCE');
+    });
+
     it('OW は同じURLのページ更新でもID差分で再通知できる', function() {
         const source = __testables.SOURCES.find(function(item) {
             return item.game === 'OW';
@@ -68,6 +77,28 @@ describe('patch note Worker', function() {
         expect(__testables.isFf14MaintenanceNewsTitle('全ワールド 緊急メンテナンス作業のお知らせ')).toBe(true);
         expect(__testables.isFf14MaintenanceNewsTitle('Meteorデータセンター メンテナンス作業のお知らせ')).toBe(true);
         expect(__testables.isFf14MaintenanceNewsTitle('コンパニオンアプリ 緊急メンテナンス作業のお知らせ')).toBe(false);
+    });
+
+    it('FF14メンテナンスは記事詳細取得に失敗しても一覧タイトルで通知対象を作る', async function() {
+        const fallbackTitle = '全ワールド 緊急メンテナンス作業 終了時間変更のお知らせ';
+        const fallbackUrl = 'https://jp.finalfantasyxiv.com/lodestone/news/detail/maintenance-change-test';
+
+        vi.stubGlobal('fetch', async function() {
+            throw new Error('network timeout');
+        });
+
+        const result = await __testables.parseFf14WorldMaintenance(
+            `<a href="/lodestone/news/detail/maintenance-change-test">[続報] ${fallbackTitle}</a>`,
+            'https://jp.finalfantasyxiv.com/lodestone/news/category/2'
+        );
+
+        expect(result).toEqual([
+            expect.objectContaining({
+                id: fallbackUrl,
+                title: fallbackTitle,
+                url: fallbackUrl
+            })
+        ]);
     });
 
     it('通常通知は青、FF14メンテナンスだけ赤にする', function() {
