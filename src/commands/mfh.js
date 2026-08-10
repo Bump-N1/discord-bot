@@ -59,7 +59,7 @@ export async function handleMfhSearchCommand(interaction) {
 
         if (entries.length === 0) {
             await interaction.editReply({
-                content: `「${keyword}」に一致するMFHデータは見つかりませんでした。英語名や短い単語でも試してみてください。`
+                content: `「${keyword}」に一致するMFHデータは見つかりませんでした。日本語名、英語名、短い単語で試してみてください。`
             });
             return;
         }
@@ -118,7 +118,7 @@ function buildMfhSearchEmbed(keyword, entries) {
 
     for (const entry of entries) {
         embed.addFields({
-            name: `${entry.name} / ${entry.categoryLabel}`,
+            name: `${getMfhDisplayName(entry)} / ${entry.categoryLabel}`,
             value: formatMfhSearchEntry(entry),
             inline: false
         });
@@ -129,7 +129,7 @@ function buildMfhSearchEmbed(keyword, entries) {
 
 function buildMfhDetailEmbed(entry) {
     const embed = new EmbedBuilder()
-        .setTitle(`MFH詳細：${entry.name}`)
+        .setTitle(`MFH詳細：${getMfhDisplayName(entry)}`)
         .setURL(entry.url)
         .setColor(MFH_COLOR)
         .setDescription(formatDescription(entry.description))
@@ -176,11 +176,18 @@ function formatMfhSearchEntry(entry) {
     const tags = entry.localizedTags?.length > 0
         ? `タグ：${entry.localizedTags.join(' / ')}\n`
         : '';
+    const originalName = entry.localizedName && entry.localizedName !== entry.name
+        ? `英語名：${entry.name}\n`
+        : '';
     const summary = entry.description
         ? `${truncateText(entry.description, 140)}\n`
         : '';
 
-    return `${tags}${summary}[詳細ページを開く](${entry.url})`;
+    return `${originalName}${tags}${summary}[詳細ページを開く](${entry.url})`;
+}
+
+function getMfhDisplayName(entry) {
+    return entry.displayName || entry.localizedName || entry.name;
 }
 
 function formatDescription(description) {

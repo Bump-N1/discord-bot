@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "deploy": "node src/commands/deploy-commands.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "mfh:build-localization": "node scripts/mfh-build-localization.mjs"
   },
   "dependencies": {
     "discord.js": "^14.27.0",

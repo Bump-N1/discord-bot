@@ -41,6 +41,10 @@ npm start
 
 相場はGGG公式の公開Currency Exchange CDNから取得するため、OAuthクライアントやアクセストークンは不要。`/poe2-edit`では表示アイテム、投稿間隔、PC／Xbox／PlayStationを設定できる。画像には確定した1時間の価格幅、取引量、在庫、前時間比を表示し、変動率が`POE2_MARKET_ALERT_PERCENT`以上の場合は自動警告する。`0`を指定すると警告を無効化できる。
 
+### MFH検索
+
+MFHの日本語検索は、Git管理外の `data/mfh-localization.local.json` がある場合に強化される。抽出済みJSONから作る場合は `npm run mfh:build-localization` を使う。
+
 ## 運用
 
 Oracle Cloud上では配置先ディレクトリとPM2プロセス名を `discord-bot` で統一する。

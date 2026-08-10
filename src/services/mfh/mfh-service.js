@@ -1,8 +1,10 @@
 import {
+    applyMfhLocalEntry,
     getMfhCategoryLabel,
     localizeMfhFieldLabel,
     localizeMfhTags,
-    localizeMfhValue
+    localizeMfhValue,
+    normalizeMfhLookupText
 } from './mfh-localization.js';
 
 const MFH_ROOT = 'https://mistfallhunter.gamedb.wiki';
@@ -118,9 +120,13 @@ export async function autocompleteMfhEntries(query) {
 
     return scoredEntries.slice(0, AUTOCOMPLETE_LIMIT).map(function(item) {
         const entry = item.entry;
+        const displayName = getMfhDisplayName(entry);
+        const name = displayName === entry.name
+            ? `${displayName} (${getMfhCategoryLabel(entry.category)})`
+            : `${displayName} / ${entry.name} (${getMfhCategoryLabel(entry.category)})`;
 
         return {
-            name: truncateChoiceLabel(`${entry.name} (${getMfhCategoryLabel(entry.category)})`),
+            name: truncateChoiceLabel(name),
             value: truncateChoiceValue(entry.name)
         };
     });
@@ -219,11 +225,11 @@ export function parseMfhCatalogueEntries(html, source) {
             continue;
         }
 
-        entries.push({
+        const entry = {
             id: id,
             name: name,
             category: source.key,
-            categoryLabel: source.label,
+            categoryLabel: source.label || getMfhCategoryLabel(source.key),
             url: new URL(href, MFH_ROOT).toString(),
             iconUrl: iconPath ? new URL(iconPath, MFH_ROOT).toString() : '',
             tags: tags,
@@ -239,7 +245,9 @@ export function parseMfhCatalogueEntries(html, source) {
                 cells: cells,
                 searchText: searchText
             })
-        });
+        };
+
+        entries.push(applyMfhLocalEntry(entry));
     }
 
     return entries;
@@ -305,7 +313,7 @@ function extractDefinitionList(html) {
 }
 
 function mergeMfhEntryDetail(entry, detail) {
-    return {
+    const merged = {
         ...entry,
         name: detail.title || entry.name,
         iconUrl: detail.iconUrl || entry.iconUrl,
@@ -317,12 +325,16 @@ function mergeMfhEntryDetail(entry, detail) {
             ...detail.stats
         }
     };
+
+    return applyMfhLocalEntry(merged);
 }
 
 function findBestMfhEntry(entries, query) {
     const normalizedQuery = normalizeMfhText(query);
     const exact = entries.find(function(entry) {
-        return normalizeMfhText(entry.name) === normalizedQuery;
+        return getEntryLookupValues(entry).some(function(value) {
+            return normalizeMfhText(value) === normalizedQuery;
+        });
     });
 
     if (exact) {
@@ -357,18 +369,22 @@ function getMfhSearchScore(entry, keyword) {
     }
 
     const name = normalizeMfhText(entry.name);
+    const displayName = normalizeMfhText(entry.displayName);
+    const aliases = normalizeMfhText((entry.aliases || []).join(' '));
     const tags = normalizeMfhText(entry.localizedTags.join(' ') || entry.tags.join(' '));
     const searchText = normalizeMfhText(entry.searchText);
 
-    if (name === query) {
+    if (name === query || displayName === query || getEntryLookupValues(entry).some(function(value) {
+        return normalizeMfhText(value) === query;
+    })) {
         return 0;
     }
 
-    if (name.startsWith(query)) {
+    if (name.startsWith(query) || displayName.startsWith(query)) {
         return 1;
     }
 
-    if (name.includes(query)) {
+    if (name.includes(query) || displayName.includes(query) || aliases.includes(query)) {
         return 2;
     }
 
@@ -403,7 +419,7 @@ function compareEntries(left, right) {
         return leftCategory - rightCategory;
     }
 
-    return left.name.localeCompare(right.name, 'en-US');
+    return getMfhDisplayName(left).localeCompare(getMfhDisplayName(right), 'ja-JP');
 }
 
 function buildEntrySearchText(entry) {
@@ -415,10 +431,13 @@ function buildEntrySearchText(entry) {
 
     return [
         entry.name,
+        entry.displayName,
+        entry.localizedName,
         entry.category,
         entry.categoryLabel,
         getMfhCategoryLabel(entry.category),
         ...entry.tags,
+        ...(entry.aliases || []),
         ...localizeMfhTags(entry.tags),
         cellText,
         entry.searchText
@@ -448,11 +467,21 @@ function extractEntryDescription(name, searchText) {
 }
 
 function normalizeMfhText(value) {
-    return String(value || '')
-        .normalize('NFKC')
-        .toLowerCase()
-        .replace(/[’‘]/gu, "'")
-        .replace(/[・･\s_\-:：/\\()[\]（）"'.,，。]/gu, '');
+    return normalizeMfhLookupText(value);
+}
+
+function getMfhDisplayName(entry) {
+    return entry.displayName || entry.localizedName || entry.name;
+}
+
+function getEntryLookupValues(entry) {
+    return [
+        entry.id,
+        entry.name,
+        entry.displayName,
+        entry.localizedName,
+        ...(entry.aliases || [])
+    ].filter(Boolean);
 }
 
 export function formatMfhStats(entry, limit = 8) {
@@ -547,5 +576,6 @@ export const __testables = {
     formatMfhStats,
     normalizeMfhText,
     parseMfhCatalogueEntries,
-    parseMfhDetailPage
+    parseMfhDetailPage,
+    getMfhDisplayName
 };

@@ -1,4 +1,8 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { __testables as localizationTestables } from '../src/services/mfh/mfh-localization.js';
 import {
     __testables,
     parseMfhCatalogueEntries
@@ -38,7 +42,7 @@ describe('MFH service', function() {
             url: 'https://mistfallhunter.gamedb.wiki/weapons/serpents-whisper/',
             iconUrl: 'https://mistfallhunter.gamedb.wiki/icons/1213009.webp',
             tags: ['Shadowstrix', 'Legendary', 'Dagger'],
-            localizedTags: ['シャドウストリクス', 'レジェンダリー', 'ダガー'],
+            localizedTags: ['シャドウストリクス', 'レジェンダリー', '短剣'],
             description: 'The weapon Dago carried when fleeing the Shadowstrix Inn.'
         });
         expect(entries[0].cells).toMatchObject({
@@ -76,7 +80,7 @@ describe('MFH service', function() {
             description: 'The weapon Dago carried when fleeing the Shadowstrix Inn.',
             iconUrl: 'https://mistfallhunter.gamedb.wiki/icons/1213009.webp',
             tags: ['Shadowstrix', 'Legendary', 'Dagger'],
-            localizedTags: ['シャドウストリクス', 'レジェンダリー', 'ダガー'],
+            localizedTags: ['シャドウストリクス', 'レジェンダリー', '短剣'],
             stats: {
                 Durability: '1,500',
                 Attack: '40',
@@ -88,5 +92,65 @@ describe('MFH service', function() {
     it('記号や全角差を寄せて検索用文字列を作る', function() {
         expect(__testables.normalizeMfhText("Serpent's Whisper")).toBe('serpentswhisper');
         expect(__testables.normalizeMfhText('シャドウ・ストリクス')).toBe('シャドウストリクス');
+    });
+
+    it('ローカル辞書がある場合は日本語名と別名を検索対象に含める', function() {
+        const oldPath = process.env.MFH_LOCALIZATION_PATH;
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mfh-localization-'));
+        const localPath = path.join(tempDir, 'localization.json');
+
+        fs.writeFileSync(localPath, JSON.stringify({
+            entries: [
+                {
+                    id: 'weapons:serpents-whisper',
+                    sourceName: "Serpent's Whisper",
+                    name: '蛇の囁き',
+                    aliases: ['蛇囁き', '短剣レジェンダリー'],
+                    tags: ['正式日本語']
+                }
+            ]
+        }), 'utf8');
+
+        process.env.MFH_LOCALIZATION_PATH = localPath;
+        localizationTestables.resetMfhLocalDataCache();
+
+        try {
+            const entries = parseMfhCatalogueEntries(`
+                <table>
+                    <tr data-gamedb-catalogue-item
+                        data-id="weapons:serpents-whisper"
+                        data-name="Serpent&#39;s Whisper"
+                        data-tags="Shadowstrix|Legendary|Dagger"
+                        data-search="Serpent&#39;s Whisper Dagger Shadowstrix Legendary">
+                        <td data-label="Weapon"><a href="/weapons/serpents-whisper/"><img src="/icons/1213009.webp"><strong>Serpent&#39;s Whisper</strong></a></td>
+                    </tr>
+                </table>
+            `, {
+                key: 'weapons',
+                label: '武器'
+            });
+
+            expect(entries[0]).toMatchObject({
+                name: "Serpent's Whisper",
+                displayName: '蛇の囁き',
+                localizedName: '蛇の囁き',
+                aliases: ['蛇囁き', '短剣レジェンダリー']
+            });
+            expect(entries[0].localizedTags).toContain('正式日本語');
+            expect(entries[0].searchText).toContain('蛇の囁き');
+            expect(entries[0].searchText).toContain('蛇囁き');
+        } finally {
+            if (oldPath === undefined) {
+                delete process.env.MFH_LOCALIZATION_PATH;
+            } else {
+                process.env.MFH_LOCALIZATION_PATH = oldPath;
+            }
+
+            localizationTestables.resetMfhLocalDataCache();
+            fs.rmSync(tempDir, {
+                recursive: true,
+                force: true
+            });
+        }
     });
 });
