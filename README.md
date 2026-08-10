@@ -1,7 +1,7 @@
 # discord-bot
 
 個人用Discord Bot。
-FF14 / LoL / OWの募集作成、LoL / OWの戦績確認、ARKサーバー管理、PoE2相場画像、Cloudflare Workersによる更新通知に対応する。
+FF14 / LoL / OWの募集作成、LoL / OWの戦績確認、ARKサーバー管理、PoE2相場画像、MFH検索、Cloudflare Workersによる更新通知に対応する。
 
 ## ドキュメント
 
@@ -24,6 +24,7 @@ FF14 / LoL / OWの募集作成、LoL / OWの戦績確認、ARKサーバー管理
 | 戦績確認 | `/lol-stats`, `/lol-stats-champion`, `/ow-stats`, `/ow-stats-hero` |
 | ARK | `/ark-join`, `/ark-status`, `/ark-settings`, `/ark-edit`, `/ark-reboot`, `/ark-backup`, `/ark-restore` |
 | PoE2 | `/poe2-market`, `/poe2-edit` |
+| MFH | `/mfh-search`, `/mfh-item` |
 
 ## セットアップ
 
