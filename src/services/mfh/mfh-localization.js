@@ -113,6 +113,14 @@ export function localizeMfhTags(tags) {
         .filter(Boolean);
 }
 
+export function hasMfhLocalDictionary() {
+    return loadMfhLocalData().entriesByKey.size > 0;
+}
+
+export function looksLikeJapaneseMfhText(value) {
+    return /[\u3040-\u30ff\u3400-\u9fff]/u.test(String(value || ''));
+}
+
 export function applyMfhLocalEntry(entry) {
     const localData = loadMfhLocalData();
     const localEntry = findLocalEntry(localData, entry);
@@ -430,7 +438,9 @@ function resetMfhLocalDataCache() {
 }
 
 export const __testables = {
+    hasMfhLocalDictionary,
     loadMfhLocalData,
+    looksLikeJapaneseMfhText,
     normalizeMfhLookupText,
     resetMfhLocalDataCache
 };

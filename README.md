@@ -43,7 +43,10 @@ npm start
 
 ### MFH検索
 
-MFHの日本語検索は、Git管理外の `data/mfh-localization.local.json` がある場合に強化される。抽出済みJSONから作る場合は `npm run mfh:build-localization` を使う。
+MFHの日本語検索は、Git管理外の `data/mfh-localization.local.json` がある場合に強化される。
+このファイルがない環境では、英語名またはGameDB上の表記で検索する。
+
+ローカル辞書は抽出済みJSONから生成する。ゲーム本体の暗号化アーカイブから直接読む処理は含めていないため、先に `I18NText.json` やアイテム定義JSONを抽出してから `npm run mfh:build-localization` を使う。
 
 ## 運用
 

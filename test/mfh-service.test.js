@@ -92,6 +92,9 @@ describe('MFH service', function() {
     it('記号や全角差を寄せて検索用文字列を作る', function() {
         expect(__testables.normalizeMfhText("Serpent's Whisper")).toBe('serpentswhisper');
         expect(__testables.normalizeMfhText('シャドウ・ストリクス')).toBe('シャドウストリクス');
+        expect(localizationTestables.normalizeMfhLookupText('ソーマタージ・フラックス（レベル４）')).toBe('ソーマタージフラックスレベル4');
+        expect(localizationTestables.looksLikeJapaneseMfhText('天金鉱')).toBe(true);
+        expect(localizationTestables.looksLikeJapaneseMfhText('Celestigold')).toBe(false);
     });
 
     it('ローカル辞書がある場合は日本語名と別名を検索対象に含める', function() {
