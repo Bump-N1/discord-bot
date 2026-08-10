@@ -21,6 +21,11 @@ import { startActMonitor } from './services/act/act-monitor.js';
 import { startActWebServer } from './services/act/act-web-server.js';
 import { handlePoe2EditCommand, handlePoe2MarketCommand } from './commands/poe2.js';
 import { startPoe2MarketMonitor } from './services/poe2/poe2-market-monitor.js';
+import {
+    handleMfhItemAutocomplete,
+    handleMfhItemCommand,
+    handleMfhSearchCommand
+} from './commands/mfh.js';
 
 const client = new Client({
     intents: [
@@ -42,6 +47,10 @@ client.on('interactionCreate', async function(interaction) {
     if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'ow-stats-hero') {
             await handleOwHeroAutocomplete(interaction);
+        }
+
+        if (interaction.commandName === 'mfh-item') {
+            await handleMfhItemAutocomplete(interaction);
         }
 
         return;
@@ -144,6 +153,16 @@ client.on('interactionCreate', async function(interaction) {
 
     if (interaction.commandName === 'poe2-edit') {
         await handlePoe2EditCommand(interaction);
+        return;
+    }
+
+    if (interaction.commandName === 'mfh-search') {
+        await handleMfhSearchCommand(interaction);
+        return;
+    }
+
+    if (interaction.commandName === 'mfh-item') {
+        await handleMfhItemCommand(interaction);
         return;
     }
 });

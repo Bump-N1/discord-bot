@@ -15,6 +15,7 @@ import {
     arkStatusCommand
 } from './ark.js';
 import { poe2EditCommand, poe2MarketCommand } from './poe2.js';
+import { mfhItemCommand, mfhSearchCommand } from './mfh.js';
 
 const commands = [
     arkEditCommand.toJSON(),
@@ -26,6 +27,8 @@ const commands = [
     arkSettingsCommand.toJSON(),
     lolCommand.toJSON(),
     lolChampionCommand.toJSON(),
+    mfhSearchCommand.toJSON(),
+    mfhItemCommand.toJSON(),
     owCommand.toJSON(),
     owHeroCommand.toJSON(),
     lolActCommand.toJSON(),
