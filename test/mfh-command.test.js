@@ -41,6 +41,37 @@ describe('MFH command definitions', function() {
 });
 
 describe('MFH command messages', function() {
+    it('詳細表示で重複タグを除き日本語の項目を表示する', function() {
+        const embed = __testables.buildMfhDetailEmbed({
+            name: 'Celestigold',
+            displayName: '天金鉱',
+            localizedName: '天金鉱',
+            categoryLabel: 'アイテム',
+            description: '神の血が鉱脈へ染み込んで固まったもの。',
+            url: 'https://mistfallhunter.gamedb.wiki/items/celestigold/',
+            localizedTags: ['素材', 'レジェンダリー'],
+            subName: '建設素材',
+            usage: '装備鍛造に用いる。',
+            stats: {
+                Category: 'Material',
+                Rarity: 'Legendary',
+                Use: 'English usage text',
+                Tradable: 'No'
+            }
+        }).toJSON();
+        const fields = embed.fields || [];
+
+        expect(fields.map(function(field) {
+            return field.name;
+        })).toEqual(['カテゴリ', '種類', 'レアリティ', '用途', '取引', 'データ元']);
+        expect(fields.find(function(field) {
+            return field.name === '用途';
+        })).toMatchObject({
+            value: '装備鍛造に用いる。',
+            inline: false
+        });
+    });
+
     it('日本語辞書がない状態の日本語検索では未生成であることを案内する', function() {
         const message = __testables.buildMfhNoResultMessage('天金鉱', 'search', false);
 

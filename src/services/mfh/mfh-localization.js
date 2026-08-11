@@ -11,16 +11,17 @@ export const MFH_CATEGORY_LABELS = {
 };
 
 const VALUE_LABELS = {
-    Mercenary: 'マーセナリー',
-    Shadowstrix: 'シャドウストリクス',
-    Sorcerer: 'ソーサラー',
-    Seer: 'シーア',
+    Mercenary: '傭兵',
+    Shadowstrix: 'シャドーアウル',
+    Sorcerer: '魔法使い',
+    Seer: '預言者',
     Blackarrow: 'ブラックアロー',
     Werewolf: 'ウェアウルフ',
 
     Common: 'コモン',
     Uncommon: 'アンコモン',
-    Rare: 'レア',
+    Rare: 'アンコモン',
+    Excellent: 'レア',
     Epic: 'エピック',
     Legendary: 'レジェンダリー',
     Mythic: 'ミシック',
@@ -38,8 +39,48 @@ const VALUE_LABELS = {
     'Sword and Shield': '剣と盾',
     Greatsword: '大剣',
     Polearm: '長柄武器',
+    Material: '素材',
+    'Construction Material': '建設素材',
+    'Forging Material': '鍛造素材',
+    Yes: '可能',
+    No: '不可',
+    True: '可能',
+    False: '不可',
+    Brandrgarde: 'ブランダール要塞',
+    'Mine Pit': '鉱山',
+    'Goddess Statue Shop': '女神像ショップ',
+    'Raffle Ticket': '抽選券',
+    Hammer: 'ハンマー',
+    Energy: 'エネルギー',
+    Physical: '物理',
+    Toughness: '強靭度',
+    Slow: '減速',
+    'dodge distance': '回避距離',
+    'Super Armor level': '剛体レベル',
+    'Damage resistance': 'ダメージ耐性',
+    'physical damage reduction': '物理ダメージ軽減',
+    'critical damage reduction': 'クリティカルダメージ軽減',
+    duration: '持続時間',
+    'maximum stacks': '最大スタック',
+    Level: 'レベル',
     'Shared Staff Skills': '杖共通スキル',
     'Shared Dagger Skills': '短剣共通スキル'
+};
+
+const VALUE_TERM_LABELS = {
+    Gyldenblod: '砂金',
+    Energy: 'エネルギー',
+    Physical: '物理',
+    Toughness: '強靭度',
+    Slow: '減速',
+    'dodge distance': '回避距離',
+    'Super Armor level': '剛体レベル',
+    'Damage resistance': 'ダメージ耐性',
+    'physical damage reduction': '物理ダメージ軽減',
+    'critical damage reduction': 'クリティカルダメージ軽減',
+    duration: '持続時間',
+    'maximum stacks': '最大スタック',
+    Level: 'レベル'
 };
 
 const FIELD_LABELS = {
@@ -66,12 +107,28 @@ const FIELD_LABELS = {
     Cost: 'コスト',
     Effects: '効果',
     Effect: '効果',
-    Category: 'カテゴリ',
+    Category: '種類',
     Source: '入手先',
     Use: '用途',
+    Tradable: '取引',
+    'Stack limit': '所持上限',
+    'Stash stack limit': '保管庫上限',
+    'Building upgrades': '強化対象',
     Level: 'レベル',
     Affixes: 'アフィックス',
-    Health: '体力'
+    Health: '体力',
+    'Physical damage': '物理ダメージ',
+    'Magical damage': '魔法ダメージ',
+    'Physical Reduction': '物理ダメージ軽減',
+    'Magic Reduction': '魔法ダメージ軽減',
+    Defense: '防御力',
+    'Forging cost': '鍛造費用',
+    Branch: '分岐',
+    'Effect Magnitude': '効果量',
+    'Talent branch': 'タレント分岐',
+    'Unlock level': '解放レベル',
+    Ranks: 'ランク',
+    'Gem level': 'ジェムレベル'
 };
 
 let cachedLocalData = null;
@@ -91,7 +148,9 @@ export function localizeMfhValue(value) {
     const localData = loadMfhLocalData();
     const normalized = normalizeMfhLookupText(text);
 
-    return localData.valueLabels.get(normalized) || VALUE_LABELS[text] || text;
+    return localData.valueLabels.get(normalized)
+        || VALUE_LABELS[text]
+        || localizeMfhValueTerms(text);
 }
 
 export function localizeMfhFieldLabel(label) {
@@ -131,11 +190,25 @@ export function applyMfhLocalEntry(entry) {
     ]);
 
     if (!localEntry) {
+        const localizedName = localData.valueLabels.get(normalizeMfhLookupText(entry.name)) || '';
+        const displayName = entry.displayName || localizedName || entry.name;
+        const aliases = uniqueValues([
+            ...(entry.aliases || []),
+            localizedName ? entry.name : ''
+        ]);
+
         return {
             ...entry,
-            displayName: entry.displayName || entry.name,
+            displayName: displayName,
+            localizedName: entry.localizedName || localizedName,
+            aliases: aliases,
             localizedTags: localizedTags,
-            searchText: buildLocalizedSearchText(entry, localizedTags)
+            searchText: buildLocalizedSearchText({
+                ...entry,
+                displayName: displayName,
+                localizedName: entry.localizedName || localizedName,
+                aliases: aliases
+            }, localizedTags)
         };
     }
 
@@ -147,6 +220,8 @@ export function applyMfhLocalEntry(entry) {
         localEntry.sourceName
     ]);
     const description = localEntry.description || entry.description || '';
+    const subName = localEntry.subName || entry.subName || '';
+    const usage = localEntry.usage || entry.usage || '';
 
     return {
         ...entry,
@@ -155,12 +230,16 @@ export function applyMfhLocalEntry(entry) {
         aliases: aliases,
         localizedTags: localizedTags,
         description: description,
+        subName: subName,
+        usage: usage,
         searchText: buildLocalizedSearchText({
             ...entry,
             displayName: displayName,
             localizedName: localizedName,
             aliases: aliases,
-            description: description
+            description: description,
+            subName: subName,
+            usage: usage
         }, localizedTags)
     };
 }
@@ -315,6 +394,8 @@ function normalizeLocalEntry(entry) {
         sourceName: sourceName,
         name: name,
         description: firstText(entry.description, entry.desc, entry.text),
+        subName: firstText(entry.subName, entry.subtitle),
+        usage: firstText(entry.usage, entry.use),
         aliases: toTextArray(entry.aliases),
         tags: toTextArray(entry.tags)
     };
@@ -340,6 +421,8 @@ function registerLocalEntry(localData, localEntry) {
             sourceName: localEntry.sourceName || current.sourceName || '',
             name: localEntry.name || current.name || '',
             description: localEntry.description || current.description || '',
+            subName: localEntry.subName || current.subName || '',
+            usage: localEntry.usage || current.usage || '',
             aliases: uniqueValues([...(current.aliases || []), ...localEntry.aliases]),
             tags: uniqueValues([...(current.tags || []), ...localEntry.tags])
         });
@@ -374,6 +457,8 @@ function buildLocalizedSearchText(entry, localizedTags) {
         entry.displayName,
         entry.localizedName,
         entry.description,
+        entry.subName,
+        entry.usage,
         ...(entry.aliases || []),
         ...(entry.tags || []),
         ...(localizedTags || [])
@@ -432,6 +517,24 @@ function uniqueValues(values) {
     }
 
     return unique;
+}
+
+function localizeMfhValueTerms(value) {
+    let localized = String(value || '');
+    const terms = Object.entries(VALUE_TERM_LABELS)
+        .sort(function(a, b) {
+            return b[0].length - a[0].length;
+        });
+
+    for (const [source, replacement] of terms) {
+        localized = localized.replace(new RegExp(`(?<![a-z])${escapeRegex(source)}(?![a-z])`, 'giu'), replacement);
+    }
+
+    return localized;
+}
+
+function escapeRegex(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function resetMfhLocalDataCache() {

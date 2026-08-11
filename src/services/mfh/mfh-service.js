@@ -12,6 +12,25 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 10000;
 const SEARCH_LIMIT = 10;
 const AUTOCOMPLETE_LIMIT = 25;
+const HIDDEN_STAT_FIELDS = new Set(['Weapon', 'Armor', 'Skill', 'Talent', 'Item', 'Gem']);
+const FULL_WIDTH_STAT_FIELDS = new Set(['Source', 'Use', 'Effects', 'Effect']);
+const STAT_FIELD_ORDER = [
+    'Category',
+    'Type',
+    'Slot',
+    'Class',
+    'Rarity',
+    'Attack',
+    'Combat',
+    'Combat value',
+    'Durability',
+    'Source',
+    'Use',
+    'Tradable',
+    'Stack limit',
+    'Stash stack limit',
+    'Building upgrades'
+];
 
 export const MFH_SOURCES = [
     {
@@ -489,15 +508,67 @@ export function formatMfhStats(entry, limit = 8) {
 
     return Object.entries(stats)
         .filter(function(pair) {
-            return pair[0] && pair[1] && pair[0] !== 'Weapon' && pair[0] !== 'Armor' && pair[0] !== 'Skill' && pair[0] !== 'Talent' && pair[0] !== 'Item' && pair[0] !== 'Gem';
+            return pair[0]
+                && String(pair[1] ?? '').trim()
+                && !HIDDEN_STAT_FIELDS.has(pair[0]);
         })
-        .slice(0, limit)
-        .map(function(pair) {
+        .map(function(pair, index) {
             return {
-                name: localizeMfhFieldLabel(pair[0]),
-                value: localizeMfhValue(pair[1])
+                key: pair[0],
+                value: pair[1],
+                index: index
             };
-        });
+        })
+        .sort(function(a, b) {
+            const orderA = getMfhStatOrder(a.key);
+            const orderB = getMfhStatOrder(b.key);
+
+            return orderA - orderB || a.index - b.index;
+        })
+        .map(function(stat) {
+            return {
+                key: stat.key,
+                name: localizeMfhFieldLabel(stat.key),
+                value: formatMfhStatValue(entry, stat.key, stat.value),
+                inline: !FULL_WIDTH_STAT_FIELDS.has(stat.key)
+            };
+        })
+        .filter(function(stat, index, allStats) {
+            return allStats.findIndex(function(candidate) {
+                return candidate.name === stat.name && candidate.value === stat.value;
+            }) === index;
+        })
+        .slice(0, limit);
+}
+
+function getMfhStatOrder(key) {
+    const index = STAT_FIELD_ORDER.indexOf(key);
+
+    return index === -1 ? STAT_FIELD_ORDER.length : index;
+}
+
+function formatMfhStatValue(entry, key, value) {
+    if (key === 'Category' && entry.subName) {
+        return entry.subName;
+    }
+
+    if (key === 'Use' && entry.usage) {
+        return entry.usage;
+    }
+
+    if (key === 'Tradable') {
+        const normalized = String(value || '').trim().toLowerCase();
+
+        if (normalized === 'yes' || normalized === 'true') {
+            return '可能';
+        }
+
+        if (normalized === 'no' || normalized === 'false') {
+            return '不可';
+        }
+    }
+
+    return localizeMfhValue(value);
 }
 
 function parseJsonAttribute(value) {

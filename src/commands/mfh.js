@@ -11,7 +11,8 @@ import {
 } from '../services/mfh/mfh-service.js';
 import {
     hasMfhLocalDictionary,
-    looksLikeJapaneseMfhText
+    looksLikeJapaneseMfhText,
+    normalizeMfhLookupText
 } from '../services/mfh/mfh-localization.js';
 
 const MFH_COLOR = 0x8EA85A;
@@ -132,6 +133,8 @@ function buildMfhSearchEmbed(keyword, entries) {
 }
 
 function buildMfhDetailEmbed(entry) {
+    const stats = formatMfhStats(entry, 12);
+    const visibleTags = getVisibleMfhTags(entry, stats);
     const embed = new EmbedBuilder()
         .setTitle(`MFH詳細：${getMfhDisplayName(entry)}`)
         .setURL(entry.url)
@@ -151,19 +154,19 @@ function buildMfhDetailEmbed(entry) {
         embed.setThumbnail(entry.iconUrl);
     }
 
-    if (entry.localizedTags?.length > 0) {
+    if (visibleTags.length > 0) {
         embed.addFields({
             name: 'タグ',
-            value: entry.localizedTags.join(' / '),
+            value: visibleTags.join(' / '),
             inline: false
         });
     }
 
-    for (const stat of formatMfhStats(entry, 10)) {
+    for (const stat of stats) {
         embed.addFields({
             name: stat.name,
             value: stat.value,
-            inline: true
+            inline: stat.inline
         });
     }
 
@@ -174,6 +177,22 @@ function buildMfhDetailEmbed(entry) {
     });
 
     return embed;
+}
+
+function getVisibleMfhTags(entry, stats) {
+    const statValues = stats.map(function(stat) {
+        return normalizeMfhLookupText(stat.value);
+    }).filter(Boolean);
+
+    return (entry.localizedTags || []).filter(function(tag) {
+        const normalizedTag = normalizeMfhLookupText(tag);
+
+        return normalizedTag && !statValues.some(function(statValue) {
+            return statValue === normalizedTag
+                || statValue.includes(normalizedTag)
+                || normalizedTag.includes(statValue);
+        });
+    });
 }
 
 function formatMfhSearchEntry(entry) {
@@ -230,5 +249,7 @@ function buildMfhNoResultMessage(keyword, type, localDictionaryAvailable = hasMf
 }
 
 export const __testables = {
-    buildMfhNoResultMessage
+    buildMfhDetailEmbed,
+    buildMfhNoResultMessage,
+    getVisibleMfhTags
 };
