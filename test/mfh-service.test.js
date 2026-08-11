@@ -43,7 +43,9 @@ describe('MFH service', function() {
             iconUrl: 'https://mistfallhunter.gamedb.wiki/icons/1213009.webp',
             tags: ['Shadowstrix', 'Legendary', 'Dagger'],
             localizedTags: ['シャドウストリクス', 'レジェンダリー', '短剣'],
-            description: 'The weapon Dago carried when fleeing the Shadowstrix Inn.'
+            displayName: 'うねる蛇の舌',
+            localizedName: 'うねる蛇の舌',
+            description: 'ダーゴがシャドーアウルの宿から逃げる時に携帯した武器。波打つ刃はうねる蛇の舌のように獲物を狙っている。彼はこのダガーを服と共に墓に埋め、自らの過去と決別した。'
         });
         expect(entries[0].cells).toMatchObject({
             Type: 'Dagger',
@@ -89,9 +91,37 @@ describe('MFH service', function() {
         });
     });
 
-    it('記号や全角差を寄せて検索用文字列を作る', function() {
+    it('記号や表記揺れを寄せて検索用文字列を作る', function() {
         expect(__testables.normalizeMfhText("Serpent's Whisper")).toBe('serpentswhisper');
         expect(__testables.normalizeMfhText('シャドウ・ストリクス')).toBe('シャドウストリクス');
+        expect(localizationTestables.normalizeMfhLookupText('ソーマタージ・フラックス（レベル４）')).toBe('ソーマタージフラックスレベル4');
+        expect(localizationTestables.looksLikeJapaneseMfhText('天金鉱')).toBe(true);
+        expect(localizationTestables.looksLikeJapaneseMfhText('Celestigold')).toBe(false);
+    });
+
+    it('ゲーム本体の公式日本語名で完全一致検索できる', function() {
+        const entries = parseMfhCatalogueEntries(`
+            <table>
+                <tr data-gamedb-catalogue-item
+                    data-id="items:celestigold"
+                    data-name="Celestigold"
+                    data-tags="Material"
+                    data-search="Celestigold Material">
+                    <td data-label="Item"><a href="/items/celestigold/"><strong>Celestigold</strong></a></td>
+                </tr>
+            </table>
+        `, {
+            key: 'items',
+            label: 'アイテム'
+        });
+
+        expect(entries).toHaveLength(1);
+        expect(entries[0]).toMatchObject({
+            name: 'Celestigold',
+            displayName: '天金鉱',
+            localizedName: '天金鉱'
+        });
+        expect(__testables.getMfhSearchScore(entries[0], '天金鉱')).toBe(0);
     });
 
     it('ローカル辞書がある場合は日本語名と別名を検索対象に含める', function() {
@@ -105,7 +135,7 @@ describe('MFH service', function() {
                     id: 'weapons:serpents-whisper',
                     sourceName: "Serpent's Whisper",
                     name: '蛇の囁き',
-                    aliases: ['蛇囁き', '短剣レジェンダリー'],
+                    aliases: ['蛇短剣', '短剣レジェンダリー'],
                     tags: ['正式日本語']
                 }
             ]
@@ -134,11 +164,11 @@ describe('MFH service', function() {
                 name: "Serpent's Whisper",
                 displayName: '蛇の囁き',
                 localizedName: '蛇の囁き',
-                aliases: ['蛇囁き', '短剣レジェンダリー']
+                aliases: ['蛇短剣', '短剣レジェンダリー', "Serpent's Whisper"]
             });
             expect(entries[0].localizedTags).toContain('正式日本語');
             expect(entries[0].searchText).toContain('蛇の囁き');
-            expect(entries[0].searchText).toContain('蛇囁き');
+            expect(entries[0].searchText).toContain('蛇短剣');
         } finally {
             if (oldPath === undefined) {
                 delete process.env.MFH_LOCALIZATION_PATH;

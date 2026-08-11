@@ -9,6 +9,10 @@ import {
     MFH_SOURCES,
     searchMfhEntries
 } from '../services/mfh/mfh-service.js';
+import {
+    hasMfhLocalDictionary,
+    looksLikeJapaneseMfhText
+} from '../services/mfh/mfh-localization.js';
 
 const MFH_COLOR = 0x8EA85A;
 const SOURCE_NAME = 'Mistfall Hunter GameDB';
@@ -25,7 +29,7 @@ export const mfhSearchCommand = new SlashCommandBuilder()
     .addStringOption(function(option) {
         return option
             .setName('category')
-            .setDescription('検索対象のカテゴリを絞り込む')
+            .setDescription('検索対象のカテゴリを絞り込みます')
             .setRequired(false)
             .addChoices(...MFH_SOURCES.map(function(source) {
                 return {
@@ -59,7 +63,7 @@ export async function handleMfhSearchCommand(interaction) {
 
         if (entries.length === 0) {
             await interaction.editReply({
-                content: `「${keyword}」に一致するMFHデータは見つかりませんでした。日本語名、英語名、短い単語で試してみてください。`
+                content: buildMfhNoResultMessage(keyword, 'search')
             });
             return;
         }
@@ -89,7 +93,7 @@ export async function handleMfhItemCommand(interaction) {
     } catch (error) {
         console.error('MFH item lookup failed:', error);
         await interaction.editReply({
-            content: `「${name}」に一致するMFHデータは見つかりませんでした。まず \`/mfh-search\` で候補を確認してください。`
+            content: buildMfhNoResultMessage(name, 'item')
         });
     }
 }
@@ -209,3 +213,22 @@ function truncateText(text, maxLength) {
 
     return `${value.slice(0, maxLength - 3)}...`;
 }
+
+function buildMfhNoResultMessage(keyword, type, localDictionaryAvailable = hasMfhLocalDictionary()) {
+    if (looksLikeJapaneseMfhText(keyword) && !localDictionaryAvailable) {
+        return [
+            `「${keyword}」に一致するMFHデータは見つかりませんでした。`,
+            '日本語名検索用のローカル辞書が未生成のため、現在は英語名またはGameDB上の表記で検索してください。'
+        ].join('\n');
+    }
+
+    if (type === 'item') {
+        return `「${keyword}」に一致するMFHデータは見つかりませんでした。まず \`/mfh-search\` で候補を確認してください。`;
+    }
+
+    return `「${keyword}」に一致するMFHデータは見つかりませんでした。英語名、GameDB上の表記、短い単語で試してみてください。`;
+}
+
+export const __testables = {
+    buildMfhNoResultMessage
+};
