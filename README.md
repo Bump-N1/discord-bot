@@ -5,7 +5,7 @@ FF14 / LoL / OWの募集作成、LoL / OWの戦績確認、ARKサーバー管理
 
 ## ドキュメント
 
-詳細な使い方と運用手順はGitHub Wikiに分離しています。
+詳細な使い方と運用手順はGitHub Wikiに分けて管理する。
 
 - [Wikiホーム](https://github.com/Bump-N1/discord-bot/wiki)
 - [コマンド一覧](https://github.com/Bump-N1/discord-bot/wiki/コマンド一覧)
@@ -35,18 +35,24 @@ npm run deploy
 npm start
 ```
 
-環境変数の一覧は `.env.example` を参照。
+環境変数の一覧は `.env.example` を参照する。
 
 ### PoE2相場
 
-相場はGGG公式の公開Currency Exchange CDNから取得するため、OAuthクライアントやアクセストークンは不要。`/poe2-edit`では表示アイテム、投稿間隔、PC／Xbox／PlayStationを設定できる。画像には確定した1時間の価格幅、取引量、在庫、前時間比を表示し、変動率が`POE2_MARKET_ALERT_PERCENT`以上の場合は自動警告する。`0`を指定すると警告を無効化できる。
+相場はGGG公式の公開Currency Exchange CDNから取得するため、OAuthクライアントやアクセストークンは不要。
+`/poe2-edit` では表示アイテム、投稿間隔、PC / Xbox / PlayStationを設定できる。
+画像には確定した時間帯の価格帯、前時間比、在庫を表示する。
 
 ### MFH検索
 
-MFHの日本語検索は、Git管理外の `data/mfh-localization.local.json` がある場合に強化される。
-このファイルがない環境では、英語名またはGameDB上の表記で検索する。
+MFHはGameDBのデータを検索する。
+ゲーム本体の静的データから生成した公式日本語辞書を同梱しており、日本語名と英語名のどちらでも検索できる。
 
-ローカル辞書は抽出済みJSONから生成する。ゲーム本体の暗号化アーカイブから直接読む処理は含めていないため、先に `I18NText.json` やアイテム定義JSONを抽出してから `npm run mfh:build-localization` を使う。
+辞書を更新する場合は、抽出済みの `I18NText.json` とアイテム・スキル定義JSONがあるディレクトリを指定して生成する。
+
+```bash
+npm run mfh:build-localization -- --input <抽出済みデータのディレクトリ>
+```
 
 ## 運用
 

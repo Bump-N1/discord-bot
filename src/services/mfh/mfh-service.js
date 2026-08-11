@@ -16,32 +16,32 @@ const AUTOCOMPLETE_LIMIT = 25;
 export const MFH_SOURCES = [
     {
         key: 'weapons',
-        label: '武器',
+        label: getMfhCategoryLabel('weapons'),
         path: '/weapons/'
     },
     {
         key: 'armor',
-        label: '防具',
+        label: getMfhCategoryLabel('armor'),
         path: '/armor/'
     },
     {
         key: 'skills',
-        label: 'スキル',
+        label: getMfhCategoryLabel('skills'),
         path: '/skills/'
     },
     {
         key: 'talents',
-        label: 'タレント',
+        label: getMfhCategoryLabel('talents'),
         path: '/talents/'
     },
     {
         key: 'items',
-        label: 'アイテム',
+        label: getMfhCategoryLabel('items'),
         path: '/items/'
     },
     {
         key: 'gems',
-        label: 'ジェム',
+        label: getMfhCategoryLabel('gems'),
         path: '/gems/'
     }
 ];
@@ -574,6 +574,7 @@ function truncateChoiceValue(value) {
 export const __testables = {
     extractEntryDescription,
     formatMfhStats,
+    getMfhSearchScore,
     normalizeMfhText,
     parseMfhCatalogueEntries,
     parseMfhDetailPage,

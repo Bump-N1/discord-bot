@@ -67,7 +67,7 @@ const FIELD_LABELS = {
     Effects: '効果',
     Effect: '効果',
     Category: 'カテゴリ',
-    Source: '入手元',
+    Source: '入手先',
     Use: '用途',
     Level: 'レベル',
     Affixes: 'アフィックス',
@@ -143,7 +143,8 @@ export function applyMfhLocalEntry(entry) {
     const displayName = localizedName || entry.displayName || entry.name;
     const aliases = uniqueValues([
         ...(entry.aliases || []),
-        ...(localEntry.aliases || [])
+        ...(localEntry.aliases || []),
+        localEntry.sourceName
     ]);
     const description = localEntry.description || entry.description || '';
 
@@ -168,8 +169,8 @@ export function normalizeMfhLookupText(value) {
     return String(value || '')
         .normalize('NFKC')
         .toLowerCase()
-        .replace(/[’‘`´]/gu, "'")
-        .replace(/[\s_\-:：/\\()[\]{}（）【】「」『』"'.,，。、・･]/gu, '');
+        .replace(/[’‘´`]/gu, "'")
+        .replace(/[\s_\-:：/\\()[\]{}（）「」『』【】"'.,，。、・･]/gu, '');
 }
 
 function loadMfhLocalData() {
@@ -206,9 +207,10 @@ function getMfhLocalPathKey(localPaths) {
 
 function getMfhLocalDataPaths() {
     return [
-        process.env.MFH_LOCALIZATION_PATH,
+        path.join(process.cwd(), 'src', 'data', 'mfh-localization-ja.json'),
         path.join(process.cwd(), 'data', 'mfh-localization.local.json'),
-        path.join(process.cwd(), 'data', 'mfh', 'localization-ja.local.json')
+        path.join(process.cwd(), 'data', 'mfh', 'localization-ja.local.json'),
+        process.env.MFH_LOCALIZATION_PATH
     ].filter(Boolean);
 }
 
@@ -403,7 +405,7 @@ function toTextArray(value) {
 
     if (typeof value === 'string') {
         return value
-            .split(/[|,、]/gu)
+            .split(/[|,、，]/gu)
             .map(function(item) {
                 return item.trim();
             })

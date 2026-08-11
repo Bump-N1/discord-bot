@@ -29,7 +29,7 @@ export const mfhSearchCommand = new SlashCommandBuilder()
     .addStringOption(function(option) {
         return option
             .setName('category')
-            .setDescription('検索対象のカテゴリを絞り込む')
+            .setDescription('検索対象のカテゴリを絞り込みます')
             .setRequired(false)
             .addChoices(...MFH_SOURCES.map(function(source) {
                 return {

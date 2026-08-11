@@ -3,5 +3,8 @@
 .wrangler
 node_modules
 data
+!src/data/
+!src/data/mfh-localization-ja.json
 .codex-temp
 .tmp
+aes.txt

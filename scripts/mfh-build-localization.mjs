@@ -3,8 +3,14 @@ import os from 'node:os';
 import path from 'node:path';
 
 const DEFAULT_GAME_DIR = 'D:\\Game\\Steam\\steamapps\\common\\Mistfall Hunter';
-const DEFAULT_OUTPUT = path.join(process.cwd(), 'data', 'mfh-localization.local.json');
+const DEFAULT_OUTPUT = path.join(process.cwd(), 'src', 'data', 'mfh-localization-ja.json');
 const TARGET_FILE_NAMES = new Set([
+    'AffixGemLibrary.json',
+    'AffixSkill.json',
+    'AmmoTalent.json',
+    'AppearanceSkill.json',
+    'DerivedSkill.json',
+    'EquipAffixGemRandom.json',
     'I18NText.json',
     'ItemCommon.json',
     'ItemWeapon.json',
@@ -12,7 +18,9 @@ const TARGET_FILE_NAMES = new Set([
     'ItemLibrary.json',
     'ItemAffixGem.json',
     'Skill.json',
+    'SkillScore.json',
     'Talent.json',
+    'TalentTree.json',
     'Gem.json'
 ]);
 const SKIP_DIR_NAMES = new Set([
@@ -62,6 +70,7 @@ const NAME_FIELDS = [
     'ItemName',
     'itemName',
     'NameText',
+    'nameId',
     'NameTextId',
     'NameTextID',
     'NameId',
@@ -75,6 +84,7 @@ const DESCRIPTION_FIELDS = [
     'Text',
     'text',
     'DescText',
+    'descId',
     'DescTextId',
     'DescTextID',
     'DescriptionTextId',
@@ -116,8 +126,8 @@ for (const file of files) {
 }
 
 const output = {
-    generatedAt: new Date().toISOString(),
-    source: normalizePathForJson(inputDir),
+    formatVersion: 1,
+    source: 'Mistfall Hunter extracted game data',
     entries: uniqueEntries(entries),
     values: {},
     fields: {}
@@ -213,17 +223,15 @@ function collectI18nPairs(value, i18n) {
         return;
     }
 
-    for (const [key, item] of Object.entries(value)) {
-        if (typeof item === 'string' && containsJapanese(item)) {
-            i18n.set(String(key), item.trim());
-        }
-    }
-
     const key = firstFieldValue(value, KEY_FIELDS);
-    const text = firstFieldValue(value, TEXT_FIELDS);
+    const japanese = firstFieldValue(value, TEXT_FIELDS);
+    const english = firstFieldValue(value, ['english', 'English', 'en', 'EN']);
 
-    if (key && text && containsJapanese(text)) {
-        i18n.set(String(key), String(text).trim());
+    if (key && japanese && containsJapanese(japanese)) {
+        i18n.set(String(key), {
+            japanese: String(japanese).trim(),
+            english: String(english || '').trim()
+        });
     }
 
     for (const item of Object.values(value)) {
@@ -240,6 +248,7 @@ function collectEntries(value, i18n, file) {
         const nameRef = firstFieldValue(record, NAME_FIELDS);
         const descriptionRef = firstFieldValue(record, DESCRIPTION_FIELDS);
         const localizedName = resolveLocalizedText(nameRef, i18n);
+        const sourceName = resolveEnglishText(nameRef, i18n);
 
         if (!localizedName) {
             continue;
@@ -247,7 +256,7 @@ function collectEntries(value, i18n, file) {
 
         entries.push({
             id: id ? `${path.basename(file, '.json')}:${id}` : '',
-            sourceName: typeof nameRef === 'string' && !containsJapanese(nameRef) ? nameRef : '',
+            sourceName: sourceName,
             name: localizedName,
             description: resolveLocalizedText(descriptionRef, i18n),
             aliases: [],
@@ -307,7 +316,21 @@ function resolveLocalizedText(value, i18n) {
         return key;
     }
 
-    return i18n.get(key) || '';
+    return i18n.get(key)?.japanese || '';
+}
+
+function resolveEnglishText(value, i18n) {
+    if (typeof value !== 'string' && typeof value !== 'number') {
+        return '';
+    }
+
+    const key = String(value).trim();
+
+    if (!key) {
+        return '';
+    }
+
+    return i18n.get(key)?.english || '';
 }
 
 function firstFieldValue(record, fields) {
@@ -333,7 +356,7 @@ function uniqueEntries(entries) {
     const unique = [];
 
     for (const entry of entries) {
-        const key = normalizeLookupText(entry.id || entry.sourceName || entry.name);
+        const key = normalizeLookupText(entry.sourceName || entry.name || entry.id);
 
         if (!key || seen.has(key)) {
             continue;
@@ -354,9 +377,5 @@ function normalizeLookupText(value) {
     return String(value || '')
         .normalize('NFKC')
         .toLowerCase()
-        .replace(/[\s_\-:：/\\()[\]{}（）【】「」『』"'.,，。、・･]/gu, '');
-}
-
-function normalizePathForJson(value) {
-    return String(value || '').replace(/\\/gu, '/');
+        .replace(/[\s_\-:：/\\()[\]{}（）「」『』【】"'.,，。、・･]/gu, '');
 }
