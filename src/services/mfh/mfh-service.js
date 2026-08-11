@@ -4,7 +4,8 @@ import {
     localizeMfhFieldLabel,
     localizeMfhTags,
     localizeMfhValue,
-    normalizeMfhLookupText
+    normalizeMfhLookupText,
+    searchMfhLocalEntries
 } from './mfh-localization.js';
 
 const MFH_ROOT = 'https://mistfallhunter.gamedb.wiki';
@@ -66,6 +67,7 @@ export const MFH_SOURCES = [
 ];
 
 let cachedIndex = null;
+let indexRefreshPromise = null;
 
 export async function searchMfhEntries(keyword, options = {}) {
     const query = String(keyword || '').trim();
@@ -124,8 +126,27 @@ export async function getMfhEntryDetail(name) {
 
 export async function autocompleteMfhEntries(query) {
     const keyword = String(query || '').trim();
-    const index = await getMfhIndex();
-    const scoredEntries = index.entries
+    const index = cachedIndex;
+
+    if (!index) {
+        void warmMfhIndex().catch(function(error) {
+            console.warn('MFH index warm-up failed:', error.message);
+        });
+
+        return buildLocalAutocompleteChoices(keyword);
+    }
+
+    if (index.expiresAt <= Date.now()) {
+        void refreshMfhIndex().catch(function(error) {
+            console.warn('MFH index refresh failed:', error.message);
+        });
+    }
+
+    return buildMfhAutocompleteChoices(index.entries, keyword);
+}
+
+function buildMfhAutocompleteChoices(entries, keyword) {
+    const scoredEntries = entries
         .map(function(entry) {
             return {
                 entry: entry,
@@ -151,13 +172,54 @@ export async function autocompleteMfhEntries(query) {
     });
 }
 
+function buildLocalAutocompleteChoices(keyword) {
+    return searchMfhLocalEntries(keyword, AUTOCOMPLETE_LIMIT).map(function(entry) {
+        const name = entry.name === entry.sourceName
+            ? entry.name
+            : `${entry.name} / ${entry.sourceName}`;
+
+        return {
+            name: truncateChoiceLabel(name),
+            value: truncateChoiceValue(entry.sourceName)
+        };
+    });
+}
+
 export async function getMfhIndex(options = {}) {
-    if (!options.force
-        && cachedIndex
-        && cachedIndex.expiresAt > Date.now()) {
+    if (!options.force && cachedIndex) {
+        if (cachedIndex.expiresAt <= Date.now()) {
+            void refreshMfhIndex().catch(function(error) {
+                console.warn('MFH index refresh failed:', error.message);
+            });
+        }
+
         return cachedIndex;
     }
 
+    return refreshMfhIndex();
+}
+
+export function warmMfhIndex() {
+    if (cachedIndex && cachedIndex.expiresAt > Date.now()) {
+        return Promise.resolve(cachedIndex);
+    }
+
+    return refreshMfhIndex();
+}
+
+function refreshMfhIndex() {
+    if (indexRefreshPromise) {
+        return indexRefreshPromise;
+    }
+
+    indexRefreshPromise = loadMfhIndex().finally(function() {
+        indexRefreshPromise = null;
+    });
+
+    return indexRefreshPromise;
+}
+
+async function loadMfhIndex() {
     const results = await Promise.allSettled(MFH_SOURCES.map(fetchMfhSourceEntries));
     const entries = results
         .flatMap(function(result) {
@@ -643,6 +705,7 @@ function truncateChoiceValue(value) {
 }
 
 export const __testables = {
+    buildLocalAutocompleteChoices,
     extractEntryDescription,
     formatMfhStats,
     getMfhSearchScore,

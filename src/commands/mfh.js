@@ -107,7 +107,12 @@ export async function handleMfhItemAutocomplete(interaction) {
         await interaction.respond(choices);
     } catch (error) {
         console.error('MFH autocomplete failed:', error);
-        await interaction.respond([]);
+
+        if (!interaction.responded && error?.code !== 10062) {
+            await interaction.respond([]).catch(function(fallbackError) {
+                console.error('MFH autocomplete fallback failed:', fallbackError);
+            });
+        }
     }
 }
 

@@ -180,6 +180,35 @@ export function looksLikeJapaneseMfhText(value) {
     return /[\u3040-\u30ff\u3400-\u9fff]/u.test(String(value || ''));
 }
 
+export function searchMfhLocalEntries(keyword, limit = 25) {
+    const query = normalizeMfhLookupText(keyword);
+
+    if (!query) {
+        return [];
+    }
+
+    const localData = loadMfhLocalData();
+
+    return Array.from(localData.autocompleteEntries.values())
+        .map(function(entry) {
+            return {
+                entry: entry,
+                score: getLocalEntrySearchScore(entry, query)
+            };
+        })
+        .filter(function(item) {
+            return item.score !== null;
+        })
+        .sort(function(left, right) {
+            return left.score - right.score
+                || left.entry.name.localeCompare(right.entry.name, 'ja-JP');
+        })
+        .slice(0, limit)
+        .map(function(item) {
+            return item.entry;
+        });
+}
+
 export function applyMfhLocalEntry(entry) {
     const localData = loadMfhLocalData();
     const localEntry = findLocalEntry(localData, entry);
@@ -296,6 +325,7 @@ function getMfhLocalDataPaths() {
 function createEmptyLocalData() {
     const localData = {
         entriesByKey: new Map(),
+        autocompleteEntries: new Map(),
         valueLabels: new Map(),
         fieldLabels: new Map()
     };
@@ -427,6 +457,39 @@ function registerLocalEntry(localData, localEntry) {
             tags: uniqueValues([...(current.tags || []), ...localEntry.tags])
         });
     }
+
+    const autocompleteKey = normalizeMfhLookupText(localEntry.sourceName);
+
+    if (autocompleteKey && localEntry.name) {
+        const current = localData.autocompleteEntries.get(autocompleteKey) || {};
+
+        localData.autocompleteEntries.set(autocompleteKey, {
+            sourceName: localEntry.sourceName,
+            name: localEntry.name || current.name || '',
+            aliases: uniqueValues([...(current.aliases || []), ...localEntry.aliases])
+        });
+    }
+}
+
+function getLocalEntrySearchScore(entry, query) {
+    const name = normalizeMfhLookupText(entry.name);
+    const sourceName = normalizeMfhLookupText(entry.sourceName);
+    const aliases = (entry.aliases || []).map(normalizeMfhLookupText);
+    const values = [name, sourceName, ...aliases].filter(Boolean);
+
+    if (values.some(function(value) { return value === query; })) {
+        return 0;
+    }
+
+    if (values.some(function(value) { return value.startsWith(query); })) {
+        return 1;
+    }
+
+    if (values.some(function(value) { return value.includes(query); })) {
+        return 2;
+    }
+
+    return null;
 }
 
 function findLocalEntry(localData, entry) {

@@ -26,6 +26,7 @@ import {
     handleMfhItemCommand,
     handleMfhSearchCommand
 } from './commands/mfh.js';
+import { warmMfhIndex } from './services/mfh/mfh-service.js';
 
 const client = new Client({
     intents: [
@@ -41,6 +42,9 @@ client.once('clientReady', function() {
     startActMonitor(client);
     startActWebServer(client);
     startPoe2MarketMonitor(client);
+    void warmMfhIndex().catch(function(error) {
+        console.warn('MFH index warm-up failed:', error.message);
+    });
 });
 
 client.on('interactionCreate', async function(interaction) {
