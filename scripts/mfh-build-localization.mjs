@@ -4,6 +4,7 @@ import path from 'node:path';
 
 const DEFAULT_GAME_DIR = 'D:\\Game\\Steam\\steamapps\\common\\Mistfall Hunter';
 const DEFAULT_OUTPUT = path.join(process.cwd(), 'src', 'data', 'mfh-localization-ja.json');
+const VALUE_MAX_LENGTH = 500;
 const TARGET_FILE_NAMES = new Set([
     'AffixGemLibrary.json',
     'AffixSkill.json',
@@ -90,6 +91,24 @@ const DESCRIPTION_FIELDS = [
     'DescriptionTextId',
     'DescriptionTextID'
 ];
+const SUB_NAME_FIELDS = [
+    'SubName',
+    'subName',
+    'Subtitle',
+    'subtitle',
+    'SubNameTextId',
+    'SubNameTextID',
+    'subNameId'
+];
+const USAGE_FIELDS = [
+    'Usage',
+    'usage',
+    'Use',
+    'use',
+    'UsageTextId',
+    'UsageTextID',
+    'usageId'
+];
 
 const options = parseArgs(process.argv.slice(2));
 const inputDir = options.input || process.env.MFH_EXTRACTED_DATA_DIR || DEFAULT_GAME_DIR;
@@ -111,14 +130,27 @@ const i18n = new Map();
 const entries = [];
 
 for (const file of files) {
+    if (path.basename(file) !== 'I18NText.json') {
+        continue;
+    }
+
     const payload = readJson(file);
 
     if (!payload) {
         continue;
     }
 
+    collectI18nPairs(payload, i18n);
+}
+
+for (const file of files) {
     if (path.basename(file) === 'I18NText.json') {
-        collectI18nPairs(payload, i18n);
+        continue;
+    }
+
+    const payload = readJson(file);
+
+    if (!payload) {
         continue;
     }
 
@@ -126,10 +158,10 @@ for (const file of files) {
 }
 
 const output = {
-    formatVersion: 1,
+    formatVersion: 2,
     source: 'Mistfall Hunter extracted game data',
     entries: uniqueEntries(entries),
-    values: {},
+    values: collectLocalizedValues(i18n),
     fields: {}
 };
 
@@ -140,6 +172,7 @@ fs.writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}${os.EOL}`, 'utf
 
 console.log(`MFHローカル辞書を生成しました: ${outputPath}`);
 console.log(`entries: ${output.entries.length}`);
+console.log(`values: ${Object.keys(output.values).length}`);
 
 function parseArgs(args) {
     const parsed = {};
@@ -247,6 +280,8 @@ function collectEntries(value, i18n, file) {
         const id = firstFieldValue(record, KEY_FIELDS) || firstFieldValue(record, ['TableId', 'tableId', 'ConfigId', 'configId']);
         const nameRef = firstFieldValue(record, NAME_FIELDS);
         const descriptionRef = firstFieldValue(record, DESCRIPTION_FIELDS);
+        const subNameRef = firstFieldValue(record, SUB_NAME_FIELDS);
+        const usageRef = firstFieldValue(record, USAGE_FIELDS);
         const localizedName = resolveLocalizedText(nameRef, i18n);
         const sourceName = resolveEnglishText(nameRef, i18n);
 
@@ -259,6 +294,8 @@ function collectEntries(value, i18n, file) {
             sourceName: sourceName,
             name: localizedName,
             description: resolveLocalizedText(descriptionRef, i18n),
+            subName: resolveLocalizedText(subNameRef, i18n),
+            usage: resolveLocalizedText(usageRef, i18n),
             aliases: [],
             tags: []
         });
@@ -313,10 +350,10 @@ function resolveLocalizedText(value, i18n) {
     }
 
     if (containsJapanese(key)) {
-        return key;
+        return cleanLocalizedText(key);
     }
 
-    return i18n.get(key)?.japanese || '';
+    return cleanLocalizedText(i18n.get(key)?.japanese || '');
 }
 
 function resolveEnglishText(value, i18n) {
@@ -330,7 +367,46 @@ function resolveEnglishText(value, i18n) {
         return '';
     }
 
-    return i18n.get(key)?.english || '';
+    return cleanLocalizedText(i18n.get(key)?.english || '');
+}
+
+function collectLocalizedValues(i18n) {
+    const values = new Map();
+    const conflicts = new Set();
+
+    for (const pair of i18n.values()) {
+        const english = cleanLocalizedText(pair.english);
+        const japanese = cleanLocalizedText(pair.japanese);
+
+        if (!english
+            || !japanese
+            || english.length > VALUE_MAX_LENGTH
+            || japanese.length > VALUE_MAX_LENGTH) {
+            continue;
+        }
+
+        if (values.has(english) && values.get(english) !== japanese) {
+            conflicts.add(english);
+            continue;
+        }
+
+        values.set(english, japanese);
+    }
+
+    for (const english of conflicts) {
+        values.delete(english);
+    }
+
+    return Object.fromEntries(Array.from(values.entries()).sort(function(a, b) {
+        return a[0].localeCompare(b[0], 'en');
+    }));
+}
+
+function cleanLocalizedText(value) {
+    return String(value || '')
+        .replace(/<[^>]+>/gu, '')
+        .replace(/\s+/gu, ' ')
+        .trim();
 }
 
 function firstFieldValue(record, fields) {

@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { __testables as localizationTestables } from '../src/services/mfh/mfh-localization.js';
+import {
+    __testables as localizationTestables,
+    localizeMfhValue
+} from '../src/services/mfh/mfh-localization.js';
 import {
     __testables,
     parseMfhCatalogueEntries
@@ -42,7 +45,7 @@ describe('MFH service', function() {
             url: 'https://mistfallhunter.gamedb.wiki/weapons/serpents-whisper/',
             iconUrl: 'https://mistfallhunter.gamedb.wiki/icons/1213009.webp',
             tags: ['Shadowstrix', 'Legendary', 'Dagger'],
-            localizedTags: ['シャドウストリクス', 'レジェンダリー', '短剣'],
+            localizedTags: ['シャドーアウル', 'レジェンダリー', '短剣'],
             displayName: 'うねる蛇の舌',
             localizedName: 'うねる蛇の舌',
             description: 'ダーゴがシャドーアウルの宿から逃げる時に携帯した武器。波打つ刃はうねる蛇の舌のように獲物を狙っている。彼はこのダガーを服と共に墓に埋め、自らの過去と決別した。'
@@ -82,13 +85,51 @@ describe('MFH service', function() {
             description: 'The weapon Dago carried when fleeing the Shadowstrix Inn.',
             iconUrl: 'https://mistfallhunter.gamedb.wiki/icons/1213009.webp',
             tags: ['Shadowstrix', 'Legendary', 'Dagger'],
-            localizedTags: ['シャドウストリクス', 'レジェンダリー', '短剣'],
+            localizedTags: ['シャドーアウル', 'レジェンダリー', '短剣'],
             stats: {
                 Durability: '1,500',
                 Attack: '40',
                 'Combat value': '525'
             }
         });
+    });
+
+    it('詳細ステータスを公式日本語と読みやすい順序で整形する', function() {
+        const stats = __testables.formatMfhStats({
+            subName: '建設素材',
+            usage: '装備鍛造に用いる。',
+            stats: {
+                Category: 'Material',
+                Rarity: 'Legendary',
+                Combat: '525',
+                'Combat value': '525',
+                Source: 'Brandrgarde (Brandrgarde Pathway, Mine Pit)',
+                Use: 'English usage text',
+                Tradable: 'No',
+                'Stack limit': '1',
+                'Stash stack limit': '1',
+                'Building upgrades': 'Goddess Statue Shop'
+            }
+        }, 20);
+
+        expect(stats).toEqual([
+            expect.objectContaining({ key: 'Category', name: '種類', value: '建設素材', inline: true }),
+            expect.objectContaining({ key: 'Rarity', name: 'レアリティ', value: 'レジェンダリー', inline: true }),
+            expect.objectContaining({ key: 'Combat', name: '戦闘力', value: '525', inline: true }),
+            expect.objectContaining({ key: 'Source', name: '入手先', value: 'ブランダール要塞（要塞通路、鉱山）', inline: false }),
+            expect.objectContaining({ key: 'Use', name: '用途', value: '装備鍛造に用いる。', inline: false }),
+            expect.objectContaining({ key: 'Tradable', name: '取引', value: '不可', inline: true }),
+            expect.objectContaining({ key: 'Stack limit', name: '所持上限', value: '1', inline: true }),
+            expect.objectContaining({ key: 'Stash stack limit', name: '保管庫上限', value: '1', inline: true }),
+            expect.objectContaining({ key: 'Building upgrades', name: '強化対象', value: '女神像ショップ', inline: true })
+        ]);
+    });
+
+    it('複合ステータス内の英語用語も日本語化する', function() {
+        expect(localizeMfhValue('Physical × 1.2 · Toughness 150 · Slow (3 s duration)')).toBe(
+            '物理 × 1.2 · 強靭度 150 · 減速 (3 s 持続時間)'
+        );
+        expect(localizeMfhValue('300 Gyldenblod')).toBe('300 砂金');
     });
 
     it('記号や表記揺れを寄せて検索用文字列を作る', function() {
@@ -122,6 +163,30 @@ describe('MFH service', function() {
             localizedName: '天金鉱'
         });
         expect(__testables.getMfhSearchScore(entries[0], '天金鉱')).toBe(0);
+    });
+
+    it('個別エントリがなくても公式対訳値から日本語名を補完する', function() {
+        const entries = parseMfhCatalogueEntries(`
+            <table>
+                <tr data-gamedb-catalogue-item
+                    data-id="items:abyssal-cipher"
+                    data-name="Abyssal Cipher"
+                    data-tags="Raffle Ticket|Legendary"
+                    data-search="Abyssal Cipher Raffle Ticket Legendary">
+                    <td data-label="Item"><a href="/items/abyssal-cipher/"><strong>Abyssal Cipher</strong></a></td>
+                </tr>
+            </table>
+        `, {
+            key: 'items',
+            label: 'アイテム'
+        });
+
+        expect(entries[0]).toMatchObject({
+            name: 'Abyssal Cipher',
+            displayName: '深淵の暗号文',
+            localizedName: '深淵の暗号文',
+            localizedTags: ['抽選券', 'レジェンダリー']
+        });
     });
 
     it('ローカル辞書がある場合は日本語名と別名を検索対象に含める', function() {
