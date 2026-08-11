@@ -1,17 +1,59 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     __testables as localizationTestables,
     localizeMfhValue
 } from '../src/services/mfh/mfh-localization.js';
 import {
     __testables,
+    autocompleteMfhEntries,
     parseMfhCatalogueEntries
 } from '../src/services/mfh/mfh-service.js';
 
 describe('MFH service', function() {
+    it('初回の入力補完はGameDB一覧の完了を待たない', async function() {
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+            ok: true,
+            text: async function() {
+                return '<table></table>';
+            }
+        });
+        const warnMock = vi.spyOn(console, 'warn').mockImplementation(function() {});
+
+        try {
+            await expect(autocompleteMfhEntries('天金鉱')).resolves.toEqual([
+                {
+                    name: '天金鉱 / Celestigold',
+                    value: 'Celestigold'
+                }
+            ]);
+            await new Promise(function(resolve) {
+                setImmediate(resolve);
+            });
+            expect(fetchMock).toHaveBeenCalledTimes(6);
+        } finally {
+            fetchMock.mockRestore();
+            warnMock.mockRestore();
+        }
+    });
+
+    it('GameDBの取得を待たずに日本語辞書から入力候補を作れる', function() {
+        expect(__testables.buildLocalAutocompleteChoices('天金鉱')).toEqual([
+            {
+                name: '天金鉱 / Celestigold',
+                value: 'Celestigold'
+            }
+        ]);
+        expect(__testables.buildLocalAutocompleteChoices('うねる蛇の舌')).toEqual([
+            {
+                name: "うねる蛇の舌 / Serpent's Whisper",
+                value: "Serpent's Whisper"
+            }
+        ]);
+    });
+
     it('GameDBの一覧行から検索用データを抽出する', function() {
         const html = `
             <table>
