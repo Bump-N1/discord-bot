@@ -43,7 +43,7 @@ export async function postCurrentPoe2MarketImage(client, channelId, guildId) {
         userAgent: config.userAgent
     });
 
-    await sendSnapshotImage(client, channelId, image, snapshot, config.alertPercent);
+    await sendSnapshotImage(client, channelId, image);
 
     return snapshot;
 }
@@ -95,7 +95,7 @@ async function runPoe2MarketMonitorTick(client) {
 
             for (const subscription of targets) {
                 try {
-                    await sendSnapshotImage(client, subscription.channelId, image, snapshot, config.alertPercent);
+                    await sendSnapshotImage(client, subscription.channelId, image);
                     await markPoe2MarketPosted(subscription.channelId, snapshot.changeId);
                 } catch (error) {
                     console.error(`PoE2 market post failed for channel ${subscription.channelId}:`, error);
@@ -144,7 +144,7 @@ function isPostDue(subscription, postIntervalHours) {
     return Date.now() - lastPostedAt >= postIntervalHours * 60 * 60 * 1000;
 }
 
-async function sendSnapshotImage(client, channelId, image, snapshot, alertPercent) {
+async function sendSnapshotImage(client, channelId, image) {
     const channel = await client.channels.fetch(channelId);
 
     if (!channel?.isTextBased?.()) {
@@ -152,7 +152,6 @@ async function sendSnapshotImage(client, channelId, image, snapshot, alertPercen
     }
 
     await channel.send({
-        content: buildPriceAlertText(snapshot, alertPercent) || undefined,
         files: [
             new AttachmentBuilder(image, {
                 name: 'poe2-market.png'
@@ -161,38 +160,12 @@ async function sendSnapshotImage(client, channelId, image, snapshot, alertPercen
     });
 }
 
-function buildPriceAlertText(snapshot, threshold) {
-    const limit = Number(threshold);
-
-    if (!Number.isFinite(limit) || limit <= 0) {
-        return '';
-    }
-
-    const alerts = [];
-    for (const product of snapshot?.products || []) {
-        const changes = Object.values(product.prices || {}).map(function(price) {
-            return Number(price?.changePercent);
-        }).filter(Number.isFinite);
-        const change = changes.sort(function(left, right) {
-            return Math.abs(right) - Math.abs(left);
-        })[0];
-
-        if (Number.isFinite(change) && Math.abs(change) >= limit) {
-            alerts.push(`• ${product.label}: ${change >= 0 ? '+' : ''}${change.toFixed(1)}%`);
-        }
-    }
-
-    return alerts.length > 0
-        ? `⚠️ **PoE2相場変動（前時間比）**\n${alerts.slice(0, 8).join('\n')}`
-        : '';
-}
-
 function logMonitorError(error) {
     console.error('PoE2 market monitor failed:', error);
 }
 
 export const __testables = {
-    buildPriceAlertText,
+    sendSnapshotImage,
     buildSubscriptionGroups,
     isPostDue
 };

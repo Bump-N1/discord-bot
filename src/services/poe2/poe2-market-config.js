@@ -10,8 +10,7 @@ export function getPoe2MarketConfig() {
         realm: readText('POE2_REALM') || DEFAULT_REALM,
         userAgent: readText('POE2_USER_AGENT'),
         monitorIntervalMs: readPositiveNumber('POE2_MARKET_MONITOR_INTERVAL_MS', DEFAULT_MONITOR_INTERVAL_MS),
-        lookbackHours: readPositiveNumber('POE2_MARKET_LOOKBACK_HOURS', DEFAULT_LOOKBACK_HOURS),
-        alertPercent: readNonNegativeNumber('POE2_MARKET_ALERT_PERCENT', 10)
+        lookbackHours: readPositiveNumber('POE2_MARKET_LOOKBACK_HOURS', DEFAULT_LOOKBACK_HOURS)
     };
 }
 
@@ -38,10 +37,4 @@ function readPositiveNumber(name, fallback) {
     const value = Number(process.env[name]);
 
     return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
-function readNonNegativeNumber(name, fallback) {
-    const value = Number(process.env[name]);
-
-    return Number.isFinite(value) && value >= 0 ? value : fallback;
 }

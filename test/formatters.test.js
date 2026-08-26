@@ -252,7 +252,7 @@ describe('stats embed formatters', function() {
 });
 
 describe('PoE2 market image text helpers', function() {
-    it('相場表示と取得元表記を整形する', function() {
+    it('相場表示を整形する', function() {
         expect(poe2ImageTestables.formatPrice({
             lowestPrice: 1,
             highestPrice: 1
@@ -262,8 +262,24 @@ describe('PoE2 market image text helpers', function() {
             highestPrice: 0.25
         })).toBe('0.125 - 0.25');
         expect(poe2ImageTestables.formatPrice(null)).toBe('取引なし');
-        expect(poe2ImageTestables.buildFooterText({
-            source: 'poe-ninja'
-        })).toBe('取得元: poe.ninja');
     });
 });
+    it('画像に取得元フッターを表示せず下部余白を詰める', function() {
+        const svg = poe2ImageTestables.buildImageSvg({
+            source: 'official',
+            completedHour: 1787720400,
+            products: [{
+                label: 'カオスオーブ',
+                prices: {
+                    exalted: { lowestPrice: 1, highestPrice: 1 },
+                    divine: { lowestPrice: 0.1, highestPrice: 0.1 }
+                }
+            }]
+        }, [''], ['', ''], [
+            { label: '高貴なオーブ' },
+            { label: '神のオーブ' }
+        ]);
+
+        expect(svg).not.toContain('取得元');
+        expect(svg).toContain('height="270"');
+    });
