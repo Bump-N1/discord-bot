@@ -63,6 +63,11 @@ describe('PoE2 market client helpers', function() {
         expect(getProductMarketIds(uncutSpiritGem)).toContain(
             'Metadata/Items/Gems/ReservationGemUncut20'
         );
+        expect(getProductMarketIds(createPoe2MarketProduct('rakiatas-flow', {
+            baseItemId: 'Metadata/Items/Gems/New/NewSupport/Lineage/Rakiata'
+        }))).toContain(
+            'Metadata/Items/Gem/SupportGemRakiatasFlow'
+        );
         expect(findOfficialMarketQuote([
             {
                 market_pair: [

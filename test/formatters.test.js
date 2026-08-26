@@ -283,3 +283,33 @@ describe('PoE2 market image text helpers', function() {
         expect(svg).not.toContain('取得元');
         expect(svg).toContain('height="270"');
     });
+
+    it('古い相場の補足を価格下の同じ行に表示する', function() {
+        const svg = poe2ImageTestables.buildImageSvg({
+            source: 'official',
+            completedHour: 1787720400,
+            products: [{
+                label: 'stale item',
+                prices: {
+                    exalted: {
+                        lowestPrice: 0.02,
+                        highestPrice: 0.1,
+                        quoteChangeId: 1787720400,
+                        changePercent: 100
+                    },
+                    divine: {
+                        lowestPrice: 0.0167,
+                        highestPrice: 0.0179,
+                        quoteChangeId: 1787716800,
+                        changePercent: null
+                    }
+                }
+            }]
+        }, [''], ['', ''], [
+            { label: 'exalted' },
+            { label: 'divine' }
+        ]);
+
+        expect(svg).toContain('\u6700\u7d42\u53d6\u5f15');
+        expect(svg).not.toContain('y="225"');
+    });

@@ -85,23 +85,24 @@ function buildProductRow(product, iconDataUrl, index, latestChangeId, exaltedRig
     const icon = iconDataUrl
         ? `<image href="${iconDataUrl}" x="54" y="${y + 10}" width="38" height="38" preserveAspectRatio="xMidYMid meet"/>`
         : `<rect x="54" y="${y + 10}" width="38" height="38" rx="6" fill="#253142"/>`;
-    const staleLabel = buildStaleLabel(exalted, divine, latestChangeId, divineRightX, y);
-
     return `
     <rect x="40" y="${y}" width="820" height="67" rx="6" fill="${rowFill}"/>
     ${icon}
     <text x="108" y="${y + 30}" fill="#edf1f7" font-size="19" font-weight="600" font-family="${fontFamily()}">${escapeXml(truncateLabel(product.label))}</text>
     <text x="108" y="${y + 52}" fill="#7f8da1" font-size="12" font-family="${fontFamily()}">${escapeXml(buildLiquidityText(exalted, divine))}</text>
-    ${buildPriceText(exalted, exaltedRightX, y)}
-    ${buildPriceText(divine, divineRightX, y)}
-    ${staleLabel}`;
+    ${buildPriceText(exalted, exaltedRightX, y, latestChangeId)}
+    ${buildPriceText(divine, divineRightX, y, latestChangeId)}`;
 }
 
-function buildPriceText(price, rightX, y) {
+function buildPriceText(price, rightX, y, latestChangeId) {
     const available = price?.lowestPrice !== null && price?.lowestPrice !== undefined;
     const value = escapeXml(formatPrice(price));
 
-    const trend = available ? formatChange(price?.changePercent) : '';
+    const trend = available && !isStalePrice(price, latestChangeId)
+        ? formatChange(price?.changePercent)
+        : available && isStalePrice(price, latestChangeId)
+            ? formatStaleQuote(price.quoteChangeId)
+            : '';
     const trendColor = Number(price?.changePercent) > 0 ? '#55c98b' : Number(price?.changePercent) < 0 ? '#ef7d7d' : '#7f8da1';
 
     return `<text x="${rightX}" y="${y + 30}" text-anchor="end" fill="${available ? '#f1c76e' : '#728096'}" font-size="18" font-weight="600" font-family="${fontFamily()}">${value}</text>
@@ -131,18 +132,10 @@ function formatCompactNumber(value) {
     });
 }
 
-function buildStaleLabel(exalted, divine, latestChangeId, rightX, y) {
-    const staleChangeId = [exalted, divine].map(function(price) {
-        return price?.quoteChangeId;
-    }).find(function(changeId) {
-        return changeId && changeId !== latestChangeId;
-    });
-
-    if (!staleChangeId || typeof latestChangeId !== 'number') {
-        return '';
-    }
-
-    return `<text x="${rightX}" y="${y + 49}" text-anchor="end" fill="#79879a" font-size="11" font-family="${fontFamily()}">${escapeXml(formatStaleQuote(staleChangeId))}</text>`;
+function isStalePrice(price, latestChangeId) {
+    return price?.quoteChangeId
+        && Number.isFinite(Number(latestChangeId))
+        && Number(price.quoteChangeId) !== Number(latestChangeId);
 }
 
 async function loadIconDataUrl(iconUrl, userAgent) {

@@ -61,7 +61,8 @@ const KNOWN_PRODUCT_MARKET_IDS = {
     'omen-of-putrefaction': 'Metadata/Items/Currency/OmenOnAbyssVeilAllAndCorrupt',
     'omen-of-light': 'Metadata/Items/Currency/OmenOnAnnulRemoveAbyssMod',
     'omen-of-sinistral-necromancy': 'Metadata/Items/Currency/OmenOnAbyssAddPrefixes',
-    'omen-of-dextral-necromancy': 'Metadata/Items/Currency/OmenOnAbyssAddSuffixes'
+    'omen-of-dextral-necromancy': 'Metadata/Items/Currency/OmenOnAbyssAddSuffixes',
+    'rakiatas-flow': 'Metadata/Items/Gem/SupportGemRakiatasFlow'
 };
 const LEGACY_CATEGORY_ALIASES = {
     Ultimatum: 'SoulCores',
