@@ -263,6 +263,16 @@ describe('PoE2 market image text helpers', function() {
         })).toBe('0.125 - 0.25');
         expect(poe2ImageTestables.formatPrice(null)).toBe('取引なし');
     });
+
+    it('価格はあるが公式の取引量がない場合は取引なしと表示しない', function() {
+        expect(poe2ImageTestables.buildLiquidityText({
+            lowestPrice: 153,
+            highestPrice: 154
+        }, {
+            lowestPrice: 0.42,
+            highestPrice: 0.43
+        })).toBe('\u53d6\u5f15\u91cf\u60c5\u5831\u306a\u3057');
+    });
 });
     it('画像に取得元フッターを表示せず下部余白を詰める', function() {
         const svg = poe2ImageTestables.buildImageSvg({
@@ -282,4 +292,34 @@ describe('PoE2 market image text helpers', function() {
 
         expect(svg).not.toContain('取得元');
         expect(svg).toContain('height="270"');
+    });
+
+    it('古い相場の補足を価格下の同じ行に表示する', function() {
+        const svg = poe2ImageTestables.buildImageSvg({
+            source: 'official',
+            completedHour: 1787720400,
+            products: [{
+                label: 'stale item',
+                prices: {
+                    exalted: {
+                        lowestPrice: 0.02,
+                        highestPrice: 0.1,
+                        quoteChangeId: 1787720400,
+                        changePercent: 100
+                    },
+                    divine: {
+                        lowestPrice: 0.0167,
+                        highestPrice: 0.0179,
+                        quoteChangeId: 1787716800,
+                        changePercent: null
+                    }
+                }
+            }]
+        }, [''], ['', ''], [
+            { label: 'exalted' },
+            { label: 'divine' }
+        ]);
+
+        expect(svg).toContain('\u6700\u7d42\u53d6\u5f15');
+        expect(svg).not.toContain('y="225"');
     });

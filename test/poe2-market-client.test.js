@@ -4,6 +4,7 @@ import { __testables } from '../src/services/poe2/poe2-market-client.js';
 
 const {
     buildPoeNinjaProductPrices,
+    mergeMissingPoeNinjaPrices,
     compareCatalogProducts,
     collectOfficialQuotes,
     findLatestTradeChallengeLeague,
@@ -62,6 +63,11 @@ describe('PoE2 market client helpers', function() {
         );
         expect(getProductMarketIds(uncutSpiritGem)).toContain(
             'Metadata/Items/Gems/ReservationGemUncut20'
+        );
+        expect(getProductMarketIds(createPoe2MarketProduct('rakiatas-flow', {
+            baseItemId: 'Metadata/Items/Gems/New/NewSupport/Lineage/Rakiata'
+        }))).toContain(
+            'Metadata/Items/Gem/SupportGemRakiatasFlow'
         );
         expect(findOfficialMarketQuote([
             {
@@ -247,6 +253,51 @@ describe('PoE2 market client helpers', function() {
                 quoteChangeId: 100
             }
         });
+    });
+
+    it('公式相場の欠損価格だけをpoe.ninja価格で補完する', function() {
+        const officialSnapshot = {
+            source: 'official',
+            completedHour: 100,
+            products: [
+                {
+                    id: 'annul',
+                    prices: {
+                        exalted: { lowestPrice: null, highestPrice: null },
+                        divine: { lowestPrice: null, highestPrice: null }
+                    }
+                },
+                {
+                    id: 'divine',
+                    prices: {
+                        exalted: { lowestPrice: 350, highestPrice: 374 },
+                        divine: { lowestPrice: 1, highestPrice: 1 }
+                    }
+                }
+            ]
+        };
+        const fallbackProducts = [
+            {
+                id: 'annul',
+                prices: {
+                    exalted: { lowestPrice: 153, highestPrice: 154, quoteChangeId: 100 },
+                    divine: { lowestPrice: 0.42, highestPrice: 0.43, quoteChangeId: 100 }
+                }
+            },
+            {
+                id: 'divine',
+                prices: {
+                    exalted: { lowestPrice: 999, highestPrice: 999 },
+                    divine: { lowestPrice: 1, highestPrice: 1 }
+                }
+            }
+        ];
+
+        const result = mergeMissingPoeNinjaPrices(officialSnapshot, fallbackProducts);
+
+        expect(result.products[0].prices).toEqual(fallbackProducts[0].prices);
+        expect(result.products[1].prices.exalted).toEqual(officialSnapshot.products[1].prices.exalted);
+        expect(result.products[1].prices.divine).toEqual(officialSnapshot.products[1].prices.divine);
     });
 
     it('カタログ表示順はカテゴリ、小カテゴリ、sortOrderの順で並べる', function() {

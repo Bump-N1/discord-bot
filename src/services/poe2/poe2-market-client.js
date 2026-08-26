@@ -61,7 +61,8 @@ const KNOWN_PRODUCT_MARKET_IDS = {
     'omen-of-putrefaction': 'Metadata/Items/Currency/OmenOnAbyssVeilAllAndCorrupt',
     'omen-of-light': 'Metadata/Items/Currency/OmenOnAnnulRemoveAbyssMod',
     'omen-of-sinistral-necromancy': 'Metadata/Items/Currency/OmenOnAbyssAddPrefixes',
-    'omen-of-dextral-necromancy': 'Metadata/Items/Currency/OmenOnAbyssAddSuffixes'
+    'omen-of-dextral-necromancy': 'Metadata/Items/Currency/OmenOnAbyssAddSuffixes',
+    'rakiatas-flow': 'Metadata/Items/Gem/SupportGemRakiatasFlow'
 };
 const LEGACY_CATEGORY_ALIASES = {
     Ultimatum: 'SoulCores',
@@ -180,7 +181,80 @@ export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()
         .map(normalizeMarketProductCategory)
         .sort(compareCatalogProducts);
 
-    return await fetchOfficialMarketSnapshot(config, localizedProducts, now);
+    const officialSnapshot = await fetchOfficialMarketSnapshot(config, localizedProducts, now);
+
+    return await fillMissingPoeNinjaPrices(config, officialSnapshot);
+}
+
+async function fillMissingPoeNinjaPrices(config, officialSnapshot) {
+    const missingProducts = officialSnapshot.products.filter(function(product) {
+        return QUOTE_CURRENCY_IDS.some(function(currencyId) {
+            return product.id !== currencyId && !isPriceAvailable(product.prices?.[currencyId]);
+        });
+    });
+
+    if (missingProducts.length === 0) {
+        return officialSnapshot;
+    }
+
+    const requiredCategories = Array.from(new Set([
+        'Currency',
+        ...missingProducts.map(getPoeNinjaSourceCategory)
+    ]));
+
+    try {
+        const overviews = await fetchPoeNinjaOverviews(config, requiredCategories);
+        const fallbackProducts = missingProducts.map(function(product) {
+            return {
+                ...product,
+                prices: buildPoeNinjaProductPrices(product, overviews, officialSnapshot.completedHour)
+            };
+        });
+
+        return mergeMissingPoeNinjaPrices(officialSnapshot, fallbackProducts);
+    } catch (error) {
+        console.warn('PoE2 missing prices could not be filled from poe.ninja:', error.message);
+        return officialSnapshot;
+    }
+}
+
+function mergeMissingPoeNinjaPrices(officialSnapshot, fallbackProducts) {
+    const fallbackByProductId = new Map(fallbackProducts.map(function(product) {
+        return [product.id, product];
+    }));
+
+    return {
+        ...officialSnapshot,
+        products: officialSnapshot.products.map(function(product) {
+            const fallback = fallbackByProductId.get(product.id);
+
+            if (!fallback) {
+                return product;
+            }
+
+            const prices = Object.fromEntries(QUOTE_CURRENCY_IDS.map(function(currencyId) {
+                const officialPrice = product.prices?.[currencyId];
+                const fallbackPrice = fallback.prices?.[currencyId];
+
+                return [
+                    currencyId,
+                    isPriceAvailable(officialPrice) ? officialPrice : fallbackPrice
+                ];
+            }));
+
+            return {
+                ...product,
+                prices: prices
+            };
+        })
+    };
+}
+
+function isPriceAvailable(price) {
+    return Number.isFinite(Number(price?.lowestPrice))
+        && Number.isFinite(Number(price?.highestPrice))
+        && Number(price.lowestPrice) > 0
+        && Number(price.highestPrice) > 0;
 }
 
 async function resolvePoe2MarketConfig(config) {
@@ -838,6 +912,7 @@ async function buildResponseError(prefix, response) {
 
 export const __testables = {
     buildPoeNinjaProductPrices,
+    mergeMissingPoeNinjaPrices,
     compareCatalogProducts,
     findLatestTradeChallengeLeague,
     resolvePoe2MarketConfig,
