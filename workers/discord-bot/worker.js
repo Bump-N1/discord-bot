@@ -91,6 +91,10 @@ const SOURCES = [
     {
         game: 'OW',
         url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/',
+        supplementalUrls: [
+            'https://overwatch.blizzard.com/en-us/news/patch-notes/'
+        ],
+        forceFreshFetch: true,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_OW',
         parser: parseOverwatchPatchNotes,
         dedupeByUrl: false
@@ -195,7 +199,7 @@ async function runPatchNoteChecks(env) {
                 continue;
             }
 
-            const listHtml = await fetchText(source.url);
+            const listHtml = await fetchSourceText(source);
 
             if (!listHtml) {
                 results.push({
@@ -229,6 +233,21 @@ async function runPatchNoteChecks(env) {
     }
 
     return results;
+}
+
+async function fetchSourceText(source) {
+    const urls = [source.url].concat(source.supplementalUrls || []);
+    const responses = await Promise.all(urls.map(async function(url) {
+        try {
+            return await fetchText(url, {
+                forceFreshFetch: source.forceFreshFetch === true
+            });
+        } catch (error) {
+            return '';
+        }
+    }));
+
+    return responses.filter(Boolean).join('\n');
 }
 
 async function acquireExecutionLock(env) {
@@ -630,13 +649,14 @@ async function parseOverwatchPatchNotes(html, baseUrl) {
     ]);
 
     const englishCandidates = [...text.matchAll(/Overwatch(?: 2)? Retail Patch Notes\s*[-–—:]\s*([A-Z][a-z]+ \d{1,2}, 20\d{2})/g)].map(function(match) {
-        const title = cleanupText(match[0]);
         const dateText = cleanupText(match[1]);
+        const dateValue = convertOverwatchDateToNumber(dateText);
+        const displayDate = formatOverwatchJapaneseDate(dateValue);
 
         return {
-            title: title,
-            date: formatDateText(dateText),
-            dateValue: convertOverwatchDateToNumber(dateText)
+            title: `[オーバーウォッチ] ${displayDate}配信パッチ内容`,
+            date: displayDate,
+            dateValue: dateValue
         };
     });
 
@@ -710,6 +730,30 @@ function convertOverwatchDateToNumber(dateText) {
         return japaneseDateValue;
     }
 
+    const englishDateMatch = String(dateText || '').match(/^([A-Z][a-z]+) (\d{1,2}), (20\d{2})$/);
+    const englishMonths = {
+        January: 1,
+        February: 2,
+        March: 3,
+        April: 4,
+        May: 5,
+        June: 6,
+        July: 7,
+        August: 8,
+        September: 9,
+        October: 10,
+        November: 11,
+        December: 12
+    };
+
+    if (englishDateMatch && englishMonths[englishDateMatch[1]]) {
+        const year = Number(englishDateMatch[3]);
+        const month = englishMonths[englishDateMatch[1]];
+        const day = Number(englishDateMatch[2]);
+
+        return year * 10000 + month * 100 + day;
+    }
+
     const timestamp = Date.parse(String(dateText || ''));
 
     if (Number.isNaN(timestamp)) {
@@ -721,6 +765,18 @@ function convertOverwatchDateToNumber(dateText) {
     return date.getUTCFullYear() * 10000
         + (date.getUTCMonth() + 1) * 100
         + date.getUTCDate();
+}
+
+function formatOverwatchJapaneseDate(dateValue) {
+    if (!dateValue) {
+        return '';
+    }
+
+    const year = Math.floor(dateValue / 10000);
+    const month = Math.floor((dateValue % 10000) / 100);
+    const day = dateValue % 100;
+
+    return `${year}年${month}月${day}日`;
 }
 
 async function parsePoe2PatchNotes(html, baseUrl) {
@@ -1632,14 +1688,22 @@ async function fetchText(url, options = {}) {
 
     for (let retryCount = 0; retryCount < attempts; retryCount++) {
         try {
-            const response = await fetchWithTimeout(url, {
+            const requestUrl = options.forceFreshFetch === true
+                ? buildFreshRequestUrl(url, retryCount)
+                : url;
+            const response = await fetchWithTimeout(requestUrl, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 discord-patchnote-bot',
                     'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.5,en;q=0.3',
                     'Accept': 'text/html,application/xhtml+xml,application/xml,application/json;q=0.9,*/*;q=0.8',
                     'Cache-Control': 'no-cache',
                     'Pragma': 'no-cache'
-                }
+                },
+                cache: options.forceFreshFetch === true ? 'no-store' : undefined,
+                cf: options.forceFreshFetch === true ? {
+                    cacheEverything: false,
+                    cacheTtl: 0
+                } : undefined
             }, timeoutMilliseconds);
 
             if (response.ok) {
@@ -1667,6 +1731,12 @@ async function fetchText(url, options = {}) {
     }
 
     return '';
+}
+
+function buildFreshRequestUrl(url, retryCount) {
+    const requestUrl = new URL(url);
+    requestUrl.searchParams.set('_patchnote_check', `${Date.now()}-${retryCount}`);
+    return requestUrl.toString();
 }
 
 async function fetchWithTimeout(url, options, timeoutMilliseconds) {
@@ -2276,6 +2346,7 @@ export const __testables = {
     SOURCES,
     applySourceDedupeOptions,
     buildGenshinArticleUrl,
+    fetchSourceText,
     getDiscordPresentation,
     getPatchNoteKeys,
     getStoredPatchNoteIds,

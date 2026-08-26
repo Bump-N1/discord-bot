@@ -47,6 +47,52 @@ describe('patch note Worker', function() {
         });
     });
 
+    it('OW はキャッシュを回避し英語公式ページからも最新更新を補完する', async function() {
+        const source = __testables.SOURCES.find(function(item) {
+            return item.game === 'OW';
+        });
+        const requests = [];
+
+        vi.stubGlobal('fetch', async function(url, options) {
+            const requestUrl = String(url);
+            requests.push({
+                url: requestUrl,
+                options: options
+            });
+
+            const body = requestUrl.includes('/en-us/')
+                ? '<div>Overwatch 2 Retail Patch Notes - August 21, 2026</div>'
+                : '<div>[オーバーウォッチ]2026年8月15日配信パッチ内容</div>';
+
+            return {
+                ok: true,
+                text: async function() {
+                    return body;
+                }
+            };
+        });
+
+        const html = await __testables.fetchSourceText(source);
+        const result = await __testables.parseOverwatchPatchNotes(html, source.url);
+
+        expect(result).toMatchObject({
+            id: '2026年8月21日:[オーバーウォッチ] 2026年8月21日配信パッチ内容',
+            title: '[オーバーウォッチ] 2026年8月21日配信パッチ内容',
+            date: '2026年8月21日',
+            url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
+        });
+        expect(requests).toHaveLength(2);
+
+        for (const request of requests) {
+            expect(new URL(request.url).searchParams.has('_patchnote_check')).toBe(true);
+            expect(request.options.cache).toBe('no-store');
+            expect(request.options.cf).toEqual({
+                cacheEverything: false,
+                cacheTtl: 0
+            });
+        }
+    });
+
     it('原神APIのsUrlがYouTubeでも公式記事URLを優先する', function() {
         const result = __testables.parseGenshinContentListApi(JSON.stringify({
             data: {
