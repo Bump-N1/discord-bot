@@ -185,7 +185,15 @@ export async function fetchPoe2MarketSnapshot(selectedProducts, now = new Date()
 
 async function resolvePoe2MarketConfig(config) {
     validatePoe2MarketConfig(config);
-    return config;
+
+    if (config.league.toLowerCase() !== AUTO_LEAGUE) {
+        return config;
+    }
+
+    return {
+        ...config,
+        league: await fetchAutomaticLeague(config)
+    };
 }
 
 async function fetchAutomaticLeague(config) {
@@ -832,6 +840,7 @@ export const __testables = {
     buildPoeNinjaProductPrices,
     compareCatalogProducts,
     findLatestTradeChallengeLeague,
+    resolvePoe2MarketConfig,
     getPoeNinjaSourceCategory,
     normalizeMarketProductCategory,
     collectOfficialQuotes,
