@@ -23,6 +23,46 @@ const CATALOG_CACHE_MS = 5 * 60 * 1000;
 const LEAGUE_CACHE_MS = 5 * 60 * 1000;
 const AUTO_LEAGUE = 'auto';
 const QUOTE_CURRENCY_IDS = [POE2_MARKET_BASE_CURRENCY_ID, POE2_MARKET_DIVINE_CURRENCY_ID];
+const KNOWN_PRODUCT_MARKET_IDS = {
+    'omen-of-refreshment': 'Metadata/Items/Currency/VoodooOmens1Blue',
+    'omen-of-resurgence': 'Metadata/Items/Currency/VoodooOmens2Blue',
+    'omen-of-amelioration': 'Metadata/Items/Currency/VoodooOmens3Blue',
+    'omen-of-whittling': 'Metadata/Items/Currency/VoodooOmens1Dark',
+    'omen-of-sinistral-erasure': 'Metadata/Items/Currency/VoodooOmens2Dark',
+    'omen-of-dextral-erasure': 'Metadata/Items/Currency/VoodooOmens3Dark',
+    'omen-of-greater-exaltation': 'Metadata/Items/Currency/VoodooOmens1Yellow',
+    'omen-of-sinistral-exaltation': 'Metadata/Items/Currency/VoodooOmens2Yellow',
+    'omen-of-dextral-exaltation': 'Metadata/Items/Currency/VoodooOmens3Yellow',
+    'omen-of-sinistral-annulment': 'Metadata/Items/Currency/VoodooOmens2Purple',
+    'omen-of-dextral-annulment': 'Metadata/Items/Currency/VoodooOmens3Purple',
+    'omen-of-answered-prayers': 'Metadata/Items/Currency/VoodooOmens4Blue',
+    'omen-of-the-hunt': 'Metadata/Items/Currency/VoodooOmens4Green',
+    'omen-of-reinforcements': 'Metadata/Items/Currency/VoodooOmens4Purple',
+    'omen-of-secret-compartments': 'Metadata/Items/Currency/VoodooOmens4Dark',
+    'omen-of-homogenising-exaltation': 'Metadata/Items/Currency/OmenOnExaltAddExistingModType',
+    'omen-of-homogenising-coronation': 'Metadata/Items/Currency/OmenOnRegalAddExistingModType',
+    'omen-of-gambling': 'Metadata/Items/Currency/OmenGambleNoGoldCost',
+    'omen-of-bartering': 'Metadata/Items/Currency/OmenSellVendorRandomise',
+    'omen-of-the-blessed': 'Metadata/Items/Currency/OmenOnDivineRerollImplicits',
+    'omen-of-chaotic-rarity': 'Metadata/Items/Currency/OmenOnChaosMapItemRarity',
+    'omen-of-chaotic-quantity': 'Metadata/Items/Currency/OmenOnChaosMapPackSize',
+    'omen-of-chaotic-monsters': 'Metadata/Items/Currency/OmenOnChaosMapItemQuantity',
+    'omen-of-chaotic-effectiveness': 'Metadata/Items/Currency/OmenOnChaosMapMonsterEffectiveness',
+    'omen-of-chance': 'Metadata/Items/Currency/OmenOnChanceNotDestroy',
+    'omen-of-the-ancients': 'Metadata/Items/Currency/OmenOnChanceAncientOrb',
+    'omen-of-sanctification': 'Metadata/Items/Currency/OmenOnDivineSanctify',
+    'omen-of-dextral-crystallisation': 'Metadata/Items/Currency/OmenOnPerfectEssenceSuffix',
+    'omen-of-sinistral-crystallisation': 'Metadata/Items/Currency/OmenOnPerfectEssencePrefix',
+    'omen-of-catalysing-exaltation': 'Metadata/Items/Currency/OmenOnExaltConsumeQuality',
+    'omen-of-abyssal-echoes': 'Metadata/Items/Currency/OmenOnAbyssRerollOptions',
+    'omen-of-the-sovereign': 'Metadata/Items/Currency/OmenOnAbyssGuarenteeLichTypeMod1',
+    'omen-of-the-liege': 'Metadata/Items/Currency/OmenOnAbyssGuarenteeLichTypeMod2',
+    'omen-of-the-blackblooded': 'Metadata/Items/Currency/OmenOnAbyssGuarenteeLichTypeMod3',
+    'omen-of-putrefaction': 'Metadata/Items/Currency/OmenOnAbyssVeilAllAndCorrupt',
+    'omen-of-light': 'Metadata/Items/Currency/OmenOnAnnulRemoveAbyssMod',
+    'omen-of-sinistral-necromancy': 'Metadata/Items/Currency/OmenOnAbyssAddPrefixes',
+    'omen-of-dextral-necromancy': 'Metadata/Items/Currency/OmenOnAbyssAddSuffixes'
+};
 const LEGACY_CATEGORY_ALIASES = {
     Ultimatum: 'SoulCores',
     Idol: 'Idols',
@@ -567,17 +607,16 @@ function collectOfficialQuotes(markets, changeId, selectedProducts, quotesByProd
                 continue;
             }
 
-            const market = markets.find(function(entry) {
-                return isMarketPair(entry, getProductMarketId(product), getQuoteMarketId(currencyId));
-            });
+            const match = findOfficialMarketQuote(markets, product, currencyId);
 
-            if (!market) {
+            if (!match) {
                 continue;
             }
 
+            const market = match.market;
             const prices = [
-                calculatePriceInCurrency(market.lowest_ratio, getProductMarketId(product), getQuoteMarketId(currencyId)),
-                calculatePriceInCurrency(market.highest_ratio, getProductMarketId(product), getQuoteMarketId(currencyId))
+                calculatePriceInCurrency(market.lowest_ratio, match.productMarketId, match.currencyMarketId),
+                calculatePriceInCurrency(market.highest_ratio, match.productMarketId, match.currencyMarketId)
             ].filter(function(value) {
                 return Number.isFinite(value);
             });
@@ -590,10 +629,10 @@ function collectOfficialQuotes(markets, changeId, selectedProducts, quotesByProd
                 lowestPrice: Math.min(...prices),
                 highestPrice: Math.max(...prices),
                 quoteChangeId: changeId,
-                volume: Number(market.volume_traded?.[getProductMarketId(product)]) || 0,
-                quoteVolume: Number(market.volume_traded?.[getQuoteMarketId(currencyId)]) || 0,
-                lowestStock: Number(market.lowest_stock?.[getProductMarketId(product)]) || 0,
-                highestStock: Number(market.highest_stock?.[getProductMarketId(product)]) || 0,
+                volume: Number(market.volume_traded?.[match.productMarketId]) || 0,
+                quoteVolume: Number(market.volume_traded?.[match.currencyMarketId]) || 0,
+                lowestStock: Number(market.lowest_stock?.[match.productMarketId]) || 0,
+                highestStock: Number(market.highest_stock?.[match.productMarketId]) || 0,
                 changePercent: null
             };
         }
@@ -616,16 +655,14 @@ function applyPreviousHourChanges(selectedProducts, quotesByProductId, markets) 
                 continue;
             }
 
-            const market = markets.find(function(entry) {
-                return isMarketPair(entry, getProductMarketId(product), getQuoteMarketId(currencyId));
-            });
-            if (!market) {
+            const match = findOfficialMarketQuote(markets, product, currencyId);
+            if (!match) {
                 continue;
             }
 
             const previousValues = [
-                calculatePriceInCurrency(market.lowest_ratio, getProductMarketId(product), getQuoteMarketId(currencyId)),
-                calculatePriceInCurrency(market.highest_ratio, getProductMarketId(product), getQuoteMarketId(currencyId))
+                calculatePriceInCurrency(match.market.lowest_ratio, match.productMarketId, match.currencyMarketId),
+                calculatePriceInCurrency(match.market.highest_ratio, match.productMarketId, match.currencyMarketId)
             ].filter(Number.isFinite);
             const previous = average(previousValues);
             const currentValue = average([current.lowestPrice, current.highestPrice]);
@@ -657,8 +694,87 @@ function isMarketPair(market, productId, currencyId) {
     return ids.includes(productId) && ids.includes(currencyId);
 }
 
-function getProductMarketId(product) {
-    return product.baseItemId || getQuoteMarketId(product.id) || product.id;
+function findOfficialMarketQuote(markets, product, currencyId) {
+    const currencyMarketId = getQuoteMarketId(currencyId);
+
+    if (!currencyMarketId) {
+        return null;
+    }
+
+    for (const productMarketId of getProductMarketIds(product)) {
+        const market = markets.find(function(entry) {
+            return isMarketPair(entry, productMarketId, currencyMarketId);
+        });
+
+        if (market) {
+            return {
+                market: market,
+                productMarketId: productMarketId,
+                currencyMarketId: currencyMarketId
+            };
+        }
+    }
+
+    return null;
+}
+
+function getProductMarketIds(product) {
+    const productId = String(product?.id || '');
+    const ids = [
+        product?.baseItemId,
+        productId.startsWith('Metadata/Items/') ? productId : '',
+        getQuoteMarketId(productId),
+        getKnownProductMarketId(productId)
+    ];
+
+    return Array.from(new Set(ids.flatMap(getMarketIdVariants).filter(Boolean)));
+}
+
+function getMarketIdVariants(value) {
+    const id = String(value || '').trim();
+
+    if (!id) {
+        return [];
+    }
+
+    const variants = [id];
+
+    if (id.includes('/Currency/Omens/')) {
+        variants.push(id.replace('/Currency/Omens/', '/Currency/'));
+    }
+
+    if (id.includes('/Items/Gem/')) {
+        variants.push(id.replace('/Items/Gem/', '/Items/Gems/'));
+    }
+
+    if (id.includes('/Items/Gems/')) {
+        variants.push(id.replace('/Items/Gems/', '/Items/Gem/'));
+    }
+
+    return variants;
+}
+
+function getKnownProductMarketId(productId) {
+    const knownMarketId = KNOWN_PRODUCT_MARKET_IDS[productId];
+
+    if (knownMarketId) {
+        return knownMarketId;
+    }
+
+    const match = productId.match(/^uncut-(skill|spirit|support|reservation)-gem-(\d+)$/u);
+
+    if (!match) {
+        return '';
+    }
+
+    const gemType = {
+        skill: 'SkillGem',
+        spirit: 'ReservationGem',
+        support: 'SupportGem',
+        reservation: 'ReservationGem'
+    }[match[1]];
+
+    return 'Metadata/Items/Gems/' + gemType + 'Uncut' + match[2];
 }
 
 function getQuoteMarketId(currencyId) {
@@ -718,8 +834,11 @@ export const __testables = {
     findLatestTradeChallengeLeague,
     getPoeNinjaSourceCategory,
     normalizeMarketProductCategory,
+    collectOfficialQuotes,
     normalizePoeNinjaIconUrl,
     detectChallengeLeague,
+    findOfficialMarketQuote,
     getQuoteMarketId,
+    getProductMarketIds,
     isMarketPair
 };

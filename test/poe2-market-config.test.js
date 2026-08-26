@@ -9,8 +9,7 @@ const ENV_KEYS = [
     'POE2_REALM',
     'POE2_USER_AGENT',
     'POE2_MARKET_MONITOR_INTERVAL_MS',
-    'POE2_MARKET_LOOKBACK_HOURS',
-    'POE2_MARKET_ALERT_PERCENT'
+    'POE2_MARKET_LOOKBACK_HOURS'
 ];
 
 const originalEnv = Object.fromEntries(ENV_KEYS.map(function(key) {
@@ -40,8 +39,7 @@ describe('PoE2 market config', function() {
             realm: 'poe2',
             userAgent: '',
             monitorIntervalMs: 300000,
-            lookbackHours: 24,
-            alertPercent: 10
+            lookbackHours: 24
         });
     });
 

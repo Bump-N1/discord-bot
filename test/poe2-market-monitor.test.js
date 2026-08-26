@@ -27,21 +27,6 @@ afterEach(async function() {
 });
 
 describe('PoE2 market monitor helpers', function() {
-    it('閾値を超えた前時間比だけ警告文にする', function() {
-        expect(monitor.__testables.buildPriceAlertText({
-            products: [{
-                label: 'Divine Orb',
-                prices: {
-                    exalted: { changePercent: -12.34 }
-                }
-            }, {
-                label: 'Chaos Orb',
-                prices: {
-                    exalted: { changePercent: 3 }
-                }
-            }]
-        }, 10)).toContain('Divine Orb: -12.3%');
-    });
     it('同じギルド設定の購読をまとめ、投稿頻度と選択アイテムが違えば分ける', async function() {
         await store.savePoe2MarketSettings('guild-a', [
             {
@@ -95,6 +80,23 @@ describe('PoE2 market monitor helpers', function() {
         ]);
     });
 
+    it('相場画像だけを投稿し、価格変動の本文を付けない', async function() {
+        const send = vi.fn();
+        const client = {
+            channels: {
+                fetch: vi.fn().mockResolvedValue({
+                    isTextBased: vi.fn().mockReturnValue(true),
+                    send: send
+                })
+            }
+        };
+
+        await monitor.__testables.sendSnapshotImage(client, 'channel-id', Buffer.from('image'));
+
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(send.mock.calls[0][0].content).toBeUndefined();
+        expect(send.mock.calls[0][0].files).toHaveLength(1);
+    });
     it('投稿頻度に応じて投稿要否を判定する', function() {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-07-09T12:00:00.000Z'));

@@ -8,7 +8,7 @@ import {
 const IMAGE_WIDTH = 900;
 const HEADER_HEIGHT = 176;
 const ROW_HEIGHT = 70;
-const FOOTER_HEIGHT = 56;
+const IMAGE_BOTTOM_PADDING = 24;
 const JST_TIME_ZONE = 'Asia/Tokyo';
 const iconCache = new Map();
 
@@ -26,10 +26,9 @@ export async function buildPoe2MarketImage(snapshot, options = {}) {
 }
 
 function buildImageSvg(snapshot, productIcons, quoteCurrencyIcons, quoteCurrencies) {
-    const imageHeight = HEADER_HEIGHT + (snapshot.products.length * ROW_HEIGHT) + FOOTER_HEIGHT;
+    const imageHeight = HEADER_HEIGHT + (snapshot.products.length * ROW_HEIGHT) + IMAGE_BOTTOM_PADDING;
     const panelHeight = imageHeight - 36;
     const sourceText = escapeXml(buildSnapshotSourceText(snapshot));
-    const footerText = escapeXml(buildFooterText(snapshot));
     const itemHeaderX = 251;
     const exaltedHeaderX = 604;
     const divineHeaderX = 788;
@@ -59,7 +58,6 @@ function buildImageSvg(snapshot, productIcons, quoteCurrencyIcons, quoteCurrenci
     ${buildMarketHeader('相場', quoteCurrencyIcons[0], exaltedHeaderX, quoteCurrencies[0].label)}
     ${buildMarketHeader('相場', quoteCurrencyIcons[1], divineHeaderX, quoteCurrencies[1].label)}
     ${rows}
-    <text x="40" y="${imageHeight - 24}" fill="#687488" font-size="14" font-family="${fontFamily()}">${footerText}</text>
 </svg>`;
 }
 
@@ -249,21 +247,6 @@ function buildSnapshotSourceText(snapshot) {
     return `Currency Exchange  /  直近確定取引 ${formatSnapshotPeriod(snapshot.completedHour)}`;
 }
 
-function buildFooterText(snapshot) {
-    if (snapshot.source === 'poe-ninja') {
-        return '取得元: poe.ninja';
-    }
-
-    return `取得元: GGG Currency Exchange CDN / ${formatRealm(snapshot.realm)} / 1時間単位の確定履歴`;
-}
-
-function formatRealm(realm) {
-    return {
-        poe2: 'PC',
-        xbox: 'Xbox',
-        sony: 'PlayStation'
-    }[realm] || 'PC';
-}
 
 function formatCapturedAt(value) {
     const formatter = new Intl.DateTimeFormat('ja-JP', {
@@ -306,7 +289,7 @@ function escapeXml(value) {
 
 export const __testables = {
     buildLiquidityText,
-    buildFooterText,
+    buildImageSvg,
     buildSnapshotSourceText,
     formatPrice,
     formatChange,

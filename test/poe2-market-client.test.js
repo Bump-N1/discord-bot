@@ -5,10 +5,13 @@ import { __testables } from '../src/services/poe2/poe2-market-client.js';
 const {
     buildPoeNinjaProductPrices,
     compareCatalogProducts,
+    collectOfficialQuotes,
     findLatestTradeChallengeLeague,
     getPoeNinjaSourceCategory,
     normalizeMarketProductCategory,
     normalizePoeNinjaIconUrl,
+    findOfficialMarketQuote,
+    getProductMarketIds,
     detectChallengeLeague,
     getQuoteMarketId,
     isMarketPair
@@ -27,6 +30,83 @@ describe('PoE2 market client helpers', function() {
             { league: 'Standard' },
             { league: 'Runes of Aldur' }
         ])).toBe('Runes of Aldur');
+    });
+    it('表示用IDとCurrency Exchange内部IDの差分を吸収する', function() {
+        const omen = createPoe2MarketProduct('omen-of-putrefaction', {
+            baseItemId: 'Metadata/Items/Currency/Omens/OmenOnAbyssVeilAllAndCorrupt'
+        });
+        const omenWithoutBase = createPoe2MarketProduct('omen-of-the-sovereign');
+
+        const uncutSkillGem = createPoe2MarketProduct('uncut-skill-gem-20', {
+            baseItemId: 'Metadata/Items/Gems/UncutSkillGem'
+        });
+        const uncutSpiritGem = createPoe2MarketProduct('uncut-spirit-gem-20', {
+            baseItemId: 'Metadata/Items/Gems/UncutSkillGemBuff'
+        });
+
+        expect(getProductMarketIds(omen)).toContain(
+            'Metadata/Items/Currency/OmenOnAbyssVeilAllAndCorrupt'
+        );
+        expect(getProductMarketIds(uncutSkillGem)).toContain(
+            'Metadata/Items/Gems/SkillGemUncut20'
+        );
+        expect(getProductMarketIds(omenWithoutBase)).toContain(
+            'Metadata/Items/Currency/OmenOnAbyssGuarenteeLichTypeMod1'
+        );
+        expect(getProductMarketIds(uncutSpiritGem)).toContain(
+            'Metadata/Items/Gems/ReservationGemUncut20'
+        );
+        expect(findOfficialMarketQuote([
+            {
+                market_pair: [
+                    'Metadata/Items/Currency/OmenOnAbyssVeilAllAndCorrupt',
+                    getQuoteMarketId('divine')
+                ]
+            }
+        ], omen, 'divine')).toMatchObject({
+            productMarketId: 'Metadata/Items/Currency/OmenOnAbyssVeilAllAndCorrupt',
+            currencyMarketId: getQuoteMarketId('divine')
+        });
+    });
+    it('一致した内部IDで価格と在庫を計算する', function() {
+        const product = createPoe2MarketProduct('uncut-skill-gem-20', {
+            baseItemId: 'Metadata/Items/Gems/UncutSkillGem'
+        });
+        const quotesByProductId = new Map();
+
+        collectOfficialQuotes([{
+            market_pair: [
+                'Metadata/Items/Gems/SkillGemUncut20',
+                getQuoteMarketId('divine')
+            ],
+            lowest_ratio: {
+                'Metadata/Items/Gems/SkillGemUncut20': 2,
+                [getQuoteMarketId('divine')]: 10
+            },
+            highest_ratio: {
+                'Metadata/Items/Gems/SkillGemUncut20': 1,
+                [getQuoteMarketId('divine')]: 5
+            },
+            volume_traded: {
+                'Metadata/Items/Gems/SkillGemUncut20': 8,
+                [getQuoteMarketId('divine')]: 40
+            },
+            lowest_stock: {
+                'Metadata/Items/Gems/SkillGemUncut20': 12
+            },
+            highest_stock: {
+                'Metadata/Items/Gems/SkillGemUncut20': 18
+            }
+        }], 123, [product], quotesByProductId);
+
+        expect(quotesByProductId.get(product.id).divine).toMatchObject({
+            lowestPrice: 5,
+            highestPrice: 5,
+            quoteChangeId: 123,
+            volume: 8,
+            lowestStock: 12,
+            highestStock: 18
+        });
     });
     it('auto leagueは常設/Hardcore/未indexを避けて最新チャレンジリーグを選ぶ', function() {
         expect(findLatestTradeChallengeLeague([
