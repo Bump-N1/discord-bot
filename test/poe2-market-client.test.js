@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPoe2MarketProduct } from '../src/services/poe2/poe2-market-definition.js';
 import { __testables } from '../src/services/poe2/poe2-market-client.js';
 
@@ -14,8 +14,15 @@ const {
     getProductMarketIds,
     detectChallengeLeague,
     getQuoteMarketId,
-    isMarketPair
+    isMarketPair,
+    resolvePoe2MarketConfig
 } = __testables;
+
+const originalFetch = global.fetch;
+
+afterEach(function() {
+    global.fetch = originalFetch;
+});
 
 describe('PoE2 market client helpers', function() {
     it('CDN market_pairの内部IDと自動リーグを解決する', function() {
@@ -267,5 +274,50 @@ describe('PoE2 market client helpers', function() {
         expect(products.sort(compareCatalogProducts).map(function(product) {
             return product.id;
         })).toEqual(['currency-a', 'currency-b', 'rune-b']);
+    });
+
+    it('auto league uses the current league list instead of market response order', async function() {
+        const fetchMock = vi.fn(async function() {
+            return {
+                ok: true,
+                json: async function() {
+                    return {
+                        economyLeagues: [
+                            {
+                                name: 'Runes of Aldur',
+                                hardcore: false,
+                                indexed: true
+                            }
+                        ],
+                        oldEconomyLeagues: [
+                            {
+                                name: 'Fate of the Vaal',
+                                hardcore: false,
+                                indexed: false
+                            }
+                        ]
+                    };
+                }
+            };
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        await expect(resolvePoe2MarketConfig({
+            league: 'auto',
+            realm: 'poe2',
+            userAgent: 'test-agent'
+        })).resolves.toMatchObject({
+            league: 'Runes of Aldur',
+            realm: 'poe2'
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledWith(
+            expect.stringContaining('/api/data/index-state?'),
+            expect.objectContaining({
+                headers: expect.objectContaining({
+                    'User-Agent': 'test-agent'
+                })
+            })
+        );
     });
 });
