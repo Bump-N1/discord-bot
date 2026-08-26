@@ -263,6 +263,16 @@ describe('PoE2 market image text helpers', function() {
         })).toBe('0.125 - 0.25');
         expect(poe2ImageTestables.formatPrice(null)).toBe('取引なし');
     });
+
+    it('価格はあるが公式の取引量がない場合は取引なしと表示しない', function() {
+        expect(poe2ImageTestables.buildLiquidityText({
+            lowestPrice: 153,
+            highestPrice: 154
+        }, {
+            lowestPrice: 0.42,
+            highestPrice: 0.43
+        })).toBe('\u53d6\u5f15\u91cf\u60c5\u5831\u306a\u3057');
+    });
 });
     it('画像に取得元フッターを表示せず下部余白を詰める', function() {
         const svg = poe2ImageTestables.buildImageSvg({

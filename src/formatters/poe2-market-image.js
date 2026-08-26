@@ -114,10 +114,19 @@ function buildLiquidityText(exalted, divine) {
     const stock = Math.max(Number(exalted?.highestStock) || 0, Number(divine?.highestStock) || 0);
 
     if (volume <= 0 && stock <= 0) {
-        return '取引量なし';
+        return hasDisplayedPrice(exalted) || hasDisplayedPrice(divine)
+            ? '\u53d6\u5f15\u91cf\u60c5\u5831\u306a\u3057'
+            : '\u53d6\u5f15\u306a\u3057';
     }
 
     return `1時間取引 ${formatCompactNumber(volume)} ・ 在庫 ${formatCompactNumber(stock)}`;
+}
+
+function hasDisplayedPrice(price) {
+    return price?.lowestPrice !== null
+        && price?.lowestPrice !== undefined
+        && price?.highestPrice !== null
+        && price?.highestPrice !== undefined;
 }
 
 function formatChange(value) {
