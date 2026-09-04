@@ -93,6 +93,43 @@ describe('patch note Worker', function() {
         }
     });
 
+    it('PoE2はフォーラム一覧のCDNキャッシュを回避して最新記事を拾う', async function() {
+        const source = __testables.SOURCES.find(function(item) {
+            return item.game === 'PoE2';
+        });
+        const requests = [];
+
+        vi.stubGlobal('fetch', async function(url, options) {
+            requests.push({
+                url: String(url),
+                options: options
+            });
+
+            return {
+                ok: true,
+                text: async function() {
+                    return '<a href="/forum/view-thread/4000875">コンテンツアップデート 0.5.5 — Path of Exile 2: Forbidden Rites</a>';
+                }
+            };
+        });
+
+        const html = await __testables.fetchSourceText(source);
+        const result = await __testables.parsePoe2PatchNotes(html, source.url);
+
+        expect(result).toMatchObject({
+            id: 'https://jp.pathofexile.com/forum/view-thread/4000875',
+            title: 'コンテンツアップデート 0.5.5 — Path of Exile 2: Forbidden Rites',
+            url: 'https://jp.pathofexile.com/forum/view-thread/4000875'
+        });
+        expect(requests).toHaveLength(1);
+        expect(new URL(requests[0].url).searchParams.has('_patchnote_check')).toBe(true);
+        expect(requests[0].options.cache).toBe('no-store');
+        expect(requests[0].options.cf).toEqual({
+            cacheEverything: false,
+            cacheTtl: 0
+        });
+    });
+
     it('原神APIのsUrlがYouTubeでも公式記事URLを優先する', function() {
         const result = __testables.parseGenshinContentListApi(JSON.stringify({
             data: {
