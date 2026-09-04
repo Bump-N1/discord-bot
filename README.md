@@ -13,6 +13,8 @@ FF14 / LoL / OWの募集作成、LoL / OWの戦績確認、ARKサーバー管理
 - [ARK](https://github.com/Bump-N1/discord-bot/wiki/ARK)
 - [PoE2相場](https://github.com/Bump-N1/discord-bot/wiki/PoE2相場)
 - [戦績確認](https://github.com/Bump-N1/discord-bot/wiki/戦績確認)
+- [MFH](https://github.com/Bump-N1/discord-bot/wiki/MFH)
+- [Cloudflare Workers](https://github.com/Bump-N1/discord-bot/wiki/Cloudflare-Workers)
 - [運用](https://github.com/Bump-N1/discord-bot/wiki/運用)
 - [開発](https://github.com/Bump-N1/discord-bot/wiki/開発)
 
@@ -36,33 +38,3 @@ npm start
 ```
 
 環境変数の一覧は `.env.example` を参照する。
-
-### PoE2相場
-
-相場はGGG公式の公開Currency Exchange CDNから取得するため、OAuthクライアントやアクセストークンは不要。
-`/poe2-edit` では表示アイテム、投稿間隔、PC / Xbox / PlayStationを設定できる。
-画像には確定した時間帯の価格帯、前時間比、在庫を表示する。
-
-### MFH検索
-
-MFHはGameDBのデータを検索する。
-ゲーム本体の静的データから生成した公式日本語辞書を同梱しており、日本語名と英語名のどちらでも検索できる。
-
-辞書を更新する場合は、抽出済みの `I18NText.json` とアイテム・スキル定義JSONがあるディレクトリを指定して生成する。
-
-```bash
-npm run mfh:build-localization -- --input <抽出済みデータのディレクトリ>
-```
-
-## 運用
-
-Oracle Cloud上では配置先ディレクトリとPM2プロセス名を `discord-bot` で統一する。
-
-```bash
-cd ~/discord-bot
-git pull --ff-only
-npm install
-npm run deploy
-pm2 restart discord-bot --update-env
-pm2 status
-```
