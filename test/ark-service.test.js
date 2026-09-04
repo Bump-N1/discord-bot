@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     buildArkEditNotificationMessages,
     buildArkRebootNotificationMessage,
+    getInvalidModIds,
     normalizeModIds
 } from '../src/services/ark/ark-edit-service.js';
 import {
@@ -28,6 +29,11 @@ describe('ARK edit service', function() {
             '123',
             '456'
         ]);
+    });
+
+    it('MOD IDの不正値をバックエンド検証用に抽出する', function() {
+        expect(getInvalidModIds('123, abc 123 invalid-id')).toEqual(['abc', 'invalid-id']);
+        expect(getInvalidModIds(['123', '456'])).toEqual([]);
     });
 
     it('設定変更通知は変更された項目だけ出す', function() {

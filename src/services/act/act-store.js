@@ -1,5 +1,6 @@
-﻿import { mkdir, readFile, writeFile } from 'node:fs/promises';
+﻿import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { writeJsonFileAtomic } from '../../utils/json-file.js';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const ACT_STORE_PATH = path.join(DATA_DIR, 'parties.json');
@@ -68,8 +69,7 @@ async function readActs() {
 }
 
 async function writeActs(acts) {
-    await mkdir(DATA_DIR, {
-        recursive: true
+    await writeJsonFileAtomic(ACT_STORE_PATH, {
+        parties: acts
     });
-    await writeFile(ACT_STORE_PATH, `${JSON.stringify({ parties: acts }, null, 2)}\n`, 'utf8');
 }

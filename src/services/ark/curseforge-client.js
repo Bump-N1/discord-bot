@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../utils/http.js';
+
 const CURSEFORGE_API_BASE_URL = 'https://api.curseforge.com/v1';
 const CURSEFORGE_ARK_SEARCH_URL = 'https://www.curseforge.com/ark-survival-ascended/search?class=mods';
 const CURSEFORGE_ARK_MODS_ROOT_URL = 'https://www.curseforge.com/ark-survival-ascended/mods';
@@ -65,7 +67,7 @@ async function fetchCurseForgeApiModDetails(config, ids) {
 
     for (let index = 0; index < ids.length; index += CURSEFORGE_BATCH_SIZE) {
         const chunk = ids.slice(index, index + CURSEFORGE_BATCH_SIZE);
-        const response = await fetch(`${CURSEFORGE_API_BASE_URL}/mods`, {
+        const response = await fetchWithTimeout(`${CURSEFORGE_API_BASE_URL}/mods`, {
             method: 'POST',
             headers: {
                 Accept: 'application/json',

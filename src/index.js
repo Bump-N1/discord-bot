@@ -27,6 +27,7 @@ import {
     handleMfhSearchCommand
 } from './commands/mfh.js';
 import { warmMfhIndex } from './services/mfh/mfh-service.js';
+import { replyInteractionError } from './utils/discord-interaction.js';
 
 const client = new Client({
     intents: [
@@ -47,7 +48,19 @@ client.once('clientReady', function() {
     });
 });
 
-client.on('interactionCreate', async function(interaction) {
+client.on('interactionCreate', function(interaction) {
+    void handleInteraction(interaction).catch(async function(error) {
+        console.error('Discord interaction failed:', error);
+
+        try {
+            await replyInteractionError(interaction);
+        } catch (replyError) {
+            console.error('Discord interaction error reply failed:', replyError);
+        }
+    });
+});
+
+async function handleInteraction(interaction) {
     if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'ow-stats-hero') {
             await handleOwHeroAutocomplete(interaction);
@@ -169,6 +182,8 @@ client.on('interactionCreate', async function(interaction) {
         await handleMfhItemCommand(interaction);
         return;
     }
-});
+}
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN).catch(function(error) {
+    console.error('Discord login failed:', error);
+});

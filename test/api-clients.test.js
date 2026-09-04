@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOverfastPlayerId, overfastFetch } from '../src/services/overwatch/overwatch-client.js';
+import { fetchWithTimeout } from '../src/utils/http.js';
 
 const originalFetch = global.fetch;
 const originalRiotApiKey = process.env.RIOT_API_KEY;
@@ -68,11 +69,12 @@ describe('Riot client', function() {
         await expect(riotFetch('https://asia.api.riotgames.com/test')).resolves.toEqual({
             ok: true
         });
-        expect(global.fetch).toHaveBeenCalledWith('https://asia.api.riotgames.com/test', {
+        expect(global.fetch).toHaveBeenCalledWith('https://asia.api.riotgames.com/test', expect.objectContaining({
             headers: {
                 'X-Riot-Token': 'riot-key'
-            }
-        });
+            },
+            signal: expect.any(AbortSignal)
+        }));
     });
 
     it('Riot APIの代表的なエラーを用途別メッセージに変換する', async function() {
@@ -84,5 +86,23 @@ describe('Riot client', function() {
         const { riotFetch } = await import('../src/services/riot/riot-client.js');
 
         await expect(riotFetch('https://jp1.api.riotgames.com/test')).rejects.toThrow('API access denied');
+    });
+});
+
+describe('HTTP utility', function() {
+    it('外部通信のタイムアウトを専用エラーへ変換する', async function() {
+        global.fetch = vi.fn(function(_url, options) {
+            return new Promise(function(_resolve, reject) {
+                options.signal.addEventListener('abort', function() {
+                    const error = new Error('aborted');
+                    error.name = 'AbortError';
+                    reject(error);
+                });
+            });
+        });
+
+        await expect(fetchWithTimeout('https://example.test', {}, 1)).rejects.toMatchObject({
+            code: 'HTTP_TIMEOUT'
+        });
     });
 });

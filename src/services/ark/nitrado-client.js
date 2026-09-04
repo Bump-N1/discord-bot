@@ -1,4 +1,5 @@
 import net from 'node:net';
+import { fetchWithTimeout } from '../../utils/http.js';
 
 const NITRADO_API_BASE_URL = 'https://api.nitrado.net';
 const CONFIG_DIRECTORY_PATTERN = /\/Config\/WindowsServer\/?$/iu;
@@ -395,7 +396,7 @@ export async function downloadNitradoFileBuffer(config, filePath) {
 
     const downloadUrl = new URL(token.url);
     downloadUrl.searchParams.set('token', token.token);
-    const response = await fetch(downloadUrl);
+    const response = await fetchWithTimeout(downloadUrl);
 
     if (!response.ok) {
         throw new Error(`Nitrado file download error: ${response.status}`);
@@ -421,7 +422,7 @@ export async function uploadNitradoFileBuffer(config, directoryPath, fileName, c
 
     form.append('file', new Blob([buffer]), fileName);
 
-    const response = await fetch(token.url, {
+    const response = await fetchWithTimeout(token.url, {
         method: 'POST',
         headers: {
             token: token.token
@@ -455,7 +456,7 @@ async function fetchNitradoJson(config, path, query = {}) {
         url.searchParams.set(name, value);
     });
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
         headers: {
             Accept: 'application/json',
             Authorization: `Bearer ${config.nitradoToken}`,
@@ -496,7 +497,7 @@ async function postNitradoJson(config, path, body) {
     let lastError = '';
 
     for (const attempt of attempts) {
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
             method: 'POST',
             headers: {
                 Accept: 'application/json',
@@ -541,7 +542,7 @@ async function deleteNitradoJson(config, path, query = {}) {
         url.searchParams.set(name, value);
     });
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
         method: 'DELETE',
         headers: {
             Accept: 'application/json',

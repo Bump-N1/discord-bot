@@ -9,6 +9,7 @@ import {
     POE2_MARKET_CATEGORIES,
     POE2_MARKET_DIVINE_CURRENCY_ID
 } from './poe2-market-definition.js';
+import { fetchWithTimeout } from '../../utils/http.js';
 import {
     getPoe2JapaneseMarketProducts,
     localizePoe2MarketProducts
@@ -275,7 +276,7 @@ async function fetchAutomaticLeague(config) {
         return cachedAutoLeague.league;
     }
 
-    const response = await fetch(POE_NINJA_INDEX_STATE_URL, {
+    const response = await fetchWithTimeout(POE_NINJA_INDEX_STATE_URL, {
         headers: {
             'User-Agent': config.userAgent,
             Accept: 'application/json'
@@ -532,7 +533,7 @@ async function fetchPoeNinjaOverview(config, type) {
         league: config.league,
         type: type
     });
-    const response = await fetch(`${POE_NINJA_API_ROOT}?${query.toString()}`, {
+    const response = await fetchWithTimeout(`${POE_NINJA_API_ROOT}?${query.toString()}`, {
         headers: {
             'User-Agent': config.userAgent,
             Accept: 'application/json'
@@ -640,7 +641,7 @@ async function fetchExchangeDigest(config, changeId) {
     let lastError;
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
             headers: {
                 'User-Agent': config.userAgent,
                 Accept: 'application/json'

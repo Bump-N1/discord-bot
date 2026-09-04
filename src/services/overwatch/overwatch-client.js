@@ -1,8 +1,10 @@
+import { fetchWithTimeout } from '../../utils/http.js';
+
 const OVERFAST_BASE_URL = 'https://overfast-api.tekrop.fr';
 
 export async function overfastFetch(path) {
     const url = `${OVERFAST_BASE_URL}${path}`;
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
         headers: {
             Accept: 'application/json'
         }

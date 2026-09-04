@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { writeJsonFileAtomic } from '../../utils/json-file.js';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const STORE_PATH = path.join(DATA_DIR, 'ark-edit-history.json');
@@ -57,8 +58,5 @@ async function readState() {
 }
 
 async function writeState(state) {
-    await mkdir(DATA_DIR, {
-        recursive: true
-    });
-    await writeFile(STORE_PATH, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    await writeJsonFileAtomic(STORE_PATH, state);
 }

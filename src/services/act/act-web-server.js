@@ -59,6 +59,7 @@ import {
     restoreArkBackup
 } from '../ark/ark-backup-service.js';
 import { getArkConfig } from '../ark/ark-config.js';
+import { fetchWithTimeout } from '../../utils/http.js';
 
 const WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'act');
 const POE2_WEB_ROOT = path.resolve(process.cwd(), 'src', 'web', 'poe2-market');
@@ -529,7 +530,7 @@ async function sendPoe2MarketIcon(response, iconUrl) {
 
 async function fetchPoe2MarketIcon(iconUrl) {
     const config = getPoe2MarketConfig();
-    const response = await fetch(iconUrl, {
+    const response = await fetchWithTimeout(iconUrl, {
         headers: {
             'User-Agent': config.userAgent,
             Accept: 'image/*'

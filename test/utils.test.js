@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
     calculateKdaRatio,
     createCodeBlock,
@@ -12,6 +15,7 @@ import {
     resolveEmojiComponent,
     resolveEmojiText
 } from '../src/utils/discord-emoji.js';
+import { writeJsonFileAtomic } from '../src/utils/json-file.js';
 
 const ENV_KEYS = ['TEST_EMOJI'];
 const originalEnv = Object.fromEntries(ENV_KEYS.map(function(key) {
@@ -110,5 +114,30 @@ describe('discord emoji utils', function() {
 
         process.env.TEST_EMOJI = 'missing';
         await expect(resolveEmojiText(guild, 'TEST_EMOJI', 'TOP')).resolves.toBe('TOP');
+    });
+});
+
+describe('JSON file utils', function() {
+    it('JSONを一時ファイル経由で保存し、途中ファイルを残さない', async function() {
+        const tempDir = await mkdtemp(path.join(os.tmpdir(), 'json-file-'));
+        const filePath = path.join(tempDir, 'state.json');
+
+        try {
+            await writeJsonFileAtomic(filePath, {
+                ready: true,
+                count: 2
+            });
+
+            await expect(readFile(filePath, 'utf8')).resolves.toContain('"ready": true');
+            await expect(writeJsonFileAtomic(filePath, {
+                ready: false
+            })).resolves.toBeUndefined();
+            await expect(readFile(filePath, 'utf8')).resolves.toContain('"ready": false');
+        } finally {
+            await rm(tempDir, {
+                recursive: true,
+                force: true
+            });
+        }
     });
 });
