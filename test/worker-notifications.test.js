@@ -130,6 +130,43 @@ describe('patch note Worker', function() {
         });
     });
 
+    it('全通知元の一覧取得でCDNキャッシュを回避する', async function() {
+        const requests = [];
+
+        vi.stubGlobal('fetch', async function(url, options) {
+            requests.push({
+                url: String(url),
+                options: options
+            });
+
+            return {
+                ok: true,
+                text: async function() {
+                    return '';
+                }
+            };
+        });
+
+        for (const source of __testables.SOURCES) {
+            await __testables.fetchSourceText(source);
+        }
+
+        const expectedRequestCount = __testables.SOURCES.reduce(function(count, source) {
+            return count + 1 + (source.supplementalUrls || []).length;
+        }, 0);
+
+        expect(requests).toHaveLength(expectedRequestCount);
+
+        for (const request of requests) {
+            expect(new URL(request.url).searchParams.has('_patchnote_check')).toBe(true);
+            expect(request.options.cache).toBe('no-store');
+            expect(request.options.cf).toEqual({
+                cacheEverything: false,
+                cacheTtl: 0
+            });
+        }
+    });
+
     it('原神APIのsUrlがYouTubeでも公式記事URLを優先する', function() {
         const result = __testables.parseGenshinContentListApi(JSON.stringify({
             data: {

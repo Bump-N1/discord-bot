@@ -72,6 +72,7 @@ const SOURCES = [
     {
         game: 'FF14_MAINTENANCE',
         url: 'https://jp.finalfantasyxiv.com/lodestone/news/category/2',
+        forceFreshFetch: true,
         webhookEnvName: 'DISCORD_MAINTENANCE_FF14',
         parser: parseFf14WorldMaintenance,
         checkMultiple: true
@@ -79,12 +80,14 @@ const SOURCES = [
     {
         game: 'LoL',
         url: 'https://www.leagueoflegends.com/ja-jp/news/tags/patch-notes/',
+        forceFreshFetch: true,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_LOL',
         parser: parseRiotPatchNotes
     },
     {
         game: 'TFT',
         url: 'https://teamfighttactics.leagueoflegends.com/ja-jp/news/tags/patch-notes/',
+        forceFreshFetch: true,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_TFT',
         parser: parseRiotPatchNotes
     },
@@ -109,12 +112,14 @@ const SOURCES = [
     {
         game: 'FF14',
         url: 'https://jp.finalfantasyxiv.com/lodestone/special/patchnote_log/',
+        forceFreshFetch: true,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_FF14',
         parser: parseFf14PatchNotes
     },
     {
         game: 'Genshin_NOTICE',
         url: buildGenshinContentListApiUrl(396, 10),
+        forceFreshFetch: true,
         fallbackUrls: [
             'https://genshin.hoyoverse.com/ja/news/396',
             'https://genshin.hoyoverse.com/m/ja/news'
@@ -130,6 +135,7 @@ const SOURCES = [
     {
         game: 'Genshin_NEWS',
         url: buildGenshinContentListApiUrl(397, 10),
+        forceFreshFetch: true,
         fallbackUrls: [
             'https://genshin.hoyoverse.com/ja/news/397',
             'https://genshin.hoyoverse.com/m/ja/news'
@@ -240,15 +246,20 @@ async function fetchSourceText(source) {
     const urls = [source.url].concat(source.supplementalUrls || []);
     const responses = await Promise.all(urls.map(async function(url) {
         try {
-            return await fetchText(url, {
-                forceFreshFetch: source.forceFreshFetch === true
-            });
+            return await fetchText(url, getSourceFetchOptions(source));
         } catch (error) {
             return '';
         }
     }));
 
     return responses.filter(Boolean).join('\n');
+}
+
+function getSourceFetchOptions(source, options = {}) {
+    return {
+        ...options,
+        forceFreshFetch: source && source.forceFreshFetch === true
+    };
 }
 
 async function acquireExecutionLock(env) {
@@ -558,7 +569,7 @@ function normalizeComparableUrl(url) {
         .trim();
 }
 
-async function parseRiotPatchNotes(listHtml, baseUrl, game) {
+async function parseRiotPatchNotes(listHtml, baseUrl, game, source) {
     const links = extractLinks(listHtml, baseUrl);
     const patchLinks = links
         .map(function(link) {
@@ -595,7 +606,7 @@ async function parseRiotPatchNotes(listHtml, baseUrl, game) {
     });
 
     const latestLink = patchLinks[0];
-    const articleHtml = await fetchText(latestLink.url);
+    const articleHtml = await fetchText(latestLink.url, getSourceFetchOptions(source));
 
     if (!articleHtml) {
         return {
@@ -819,7 +830,7 @@ async function parsePoe2PatchNotes(html, baseUrl) {
     };
 }
 
-async function parseFf14PatchNotes(html, baseUrl) {
+async function parseFf14PatchNotes(html, baseUrl, _game, source) {
     const links = extractLinks(html, baseUrl);
     const patchLinks = links
         .map(function(link) {
@@ -847,7 +858,7 @@ async function parseFf14PatchNotes(html, baseUrl) {
     });
 
     const latest = patchLinks[0];
-    const articleHtml = await fetchText(latest.url);
+    const articleHtml = await fetchText(latest.url, getSourceFetchOptions(source));
 
     if (!articleHtml) {
         return {
@@ -884,7 +895,7 @@ async function parseFf14PatchNotes(html, baseUrl) {
     };
 }
 
-async function parseFf14WorldMaintenance(html, baseUrl) {
+async function parseFf14WorldMaintenance(html, baseUrl, _game, source) {
     const links = extractLinks(html, baseUrl);
     const maintenanceLinks = links
         .map(function(link) {
@@ -909,10 +920,10 @@ async function parseFf14WorldMaintenance(html, baseUrl) {
         let articleHtml = '';
 
         try {
-            articleHtml = await fetchText(maintenanceLink.url, {
+            articleHtml = await fetchText(maintenanceLink.url, getSourceFetchOptions(source, {
                 attempts: 1,
                 timeoutMilliseconds: FF14_MAINTENANCE_ARTICLE_TIMEOUT_MILLISECONDS
-            });
+            }));
         } catch (error) {
             articleHtml = '';
         }
@@ -959,7 +970,7 @@ async function parseGenshinOfficialNews(text, baseUrl, game, source) {
     if (patchNotes.length === 0 && source && Array.isArray(source.fallbackUrls)) {
         for (const fallbackUrl of source.fallbackUrls) {
             try {
-                const fallbackHtml = await fetchText(fallbackUrl);
+                const fallbackHtml = await fetchText(fallbackUrl, getSourceFetchOptions(source));
                 patchNotes = parseGenshinOfficialCategoryPage(fallbackHtml, fallbackUrl, source);
 
                 if (patchNotes.length > 0) {
@@ -971,7 +982,7 @@ async function parseGenshinOfficialNews(text, baseUrl, game, source) {
 
     if (patchNotes.length === 0 && source && source.rssFallbackUrl) {
         try {
-            const rssText = await fetchText(source.rssFallbackUrl);
+            const rssText = await fetchText(source.rssFallbackUrl, getSourceFetchOptions(source));
             patchNotes = await parseGenshinRssFeed(rssText, source.rssFallbackUrl, game, source);
         } catch (error) { }
     }
@@ -981,7 +992,12 @@ async function parseGenshinOfficialNews(text, baseUrl, game, source) {
         .slice(0, maxItems);
 
     for (const patchNote of latestNotes) {
-        const articleImageUrl = await extractGenshinArticleImageUrl(patchNote.url, patchNote.id, patchNote.imageUrl);
+        const articleImageUrl = await extractGenshinArticleImageUrl(
+            patchNote.url,
+            patchNote.id,
+            patchNote.imageUrl,
+            source
+        );
 
         if (articleImageUrl) {
             patchNote.imageUrl = articleImageUrl;
@@ -1103,7 +1119,7 @@ function extractGenshinDateFromContext(context) {
     ]);
 }
 
-async function extractGenshinArticleImageUrl(articleUrl, articleId, fallbackImageUrl) {
+async function extractGenshinArticleImageUrl(articleUrl, articleId, fallbackImageUrl, source) {
     const imageCandidates = [];
 
     if (fallbackImageUrl) {
@@ -1117,14 +1133,17 @@ async function extractGenshinArticleImageUrl(articleUrl, articleId, fallbackImag
 
     if (articleId) {
         try {
-            const detailApiText = await fetchText(buildGenshinContentDetailApiUrl(articleId));
+            const detailApiText = await fetchText(
+                buildGenshinContentDetailApiUrl(articleId),
+                getSourceFetchOptions(source)
+            );
             imageCandidates.push.apply(imageCandidates, extractGenshinImageCandidates(detailApiText, articleUrl));
         } catch (error) { }
     }
 
     if (articleUrl) {
         try {
-            const articleHtml = await fetchText(articleUrl);
+            const articleHtml = await fetchText(articleUrl, getSourceFetchOptions(source));
             imageCandidates.push.apply(imageCandidates, extractGenshinImageCandidates(articleHtml, articleUrl));
         } catch (error) { }
     }
