@@ -122,17 +122,26 @@ async function handleTerminalServiceState(client, state, availability, dependenc
 
         state.lastBackupAt = result.createdAt;
         state.lastBackupId = result.id;
-        await notifyArkChannel(client, buildArkBackupNotificationMessage(result));
+        state.finalBackupAttempted = true;
+
+        try {
+            await notifyArkChannel(client, buildArkBackupNotificationMessage(result));
+        } catch (notificationError) {
+            console.error('ARK final backup notification failed:', notificationError);
+        }
     } catch (error) {
         if (isArkBackupAlreadyRunningError(error)) {
             return;
         }
 
-        await notifyArkChannel(client, buildArkBackupFailureNotificationMessage('サービス終了検知', error));
-        return;
-    }
+        state.finalBackupAttempted = true;
 
-    state.finalBackupAttempted = true;
+        try {
+            await notifyArkChannel(client, buildArkBackupFailureNotificationMessage('サービス終了検知', error));
+        } catch (notificationError) {
+            console.error('ARK final backup failure notification failed:', notificationError);
+        }
+    }
 }
 
 function isBackupDue(state, config) {

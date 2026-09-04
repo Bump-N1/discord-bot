@@ -335,7 +335,7 @@ describe('ARK monitor helper decisions', function() {
         vi.useRealTimers();
     });
 
-    it('サービス終了時のバックアップ失敗を完了扱いにしない', async function() {
+    it('サービス終了時のバックアップ失敗を1回で打ち切る', async function() {
         const send = vi.fn().mockResolvedValue(undefined);
         const client = {
             channels: {
@@ -356,7 +356,7 @@ describe('ARK monitor helper decisions', function() {
         });
 
         expect(state.serviceUnavailable).toBe(true);
-        expect(state.finalBackupAttempted).not.toBe(true);
+        expect(state.finalBackupAttempted).toBe(true);
         expect(send).toHaveBeenCalledTimes(1);
     });
 });
