@@ -1,57 +1,33 @@
 # discord-bot Worker
 
-ゲーム公式サイトの更新情報を確認し、Discordへ通知するCloudflare Worker。
-15分ごとにLoL / TFT / OW / PoE2 / FF14 / 原神の更新を確認し、未投稿の記事だけをWebhookへ投稿する。
+ゲーム公式サイトの更新情報を確認し、Discord Webhookへ通知するCloudflare Workerです。
 
-## Git連携
+詳細な対象サイト、通知仕様、Cloudflare設定、Secret管理、障害時の確認方法は[GitHub WikiのCloudflare Workersページ](https://github.com/Bump-N1/discord-bot/wiki/Cloudflare-Workers)を参照してください。
 
-Cloudflare WorkersのGit連携では次の設定を使用する。
+## ローカル確認
 
-```text
-Worker名: discord-bot
-Root directory: workers/discord-bot
-Deploy command: npx wrangler deploy
-```
-
-Worker名は [wrangler.jsonc](./wrangler.jsonc) の `name` と一致させる。
-
-## 設定
-
-以下の設定は [wrangler.jsonc](./wrangler.jsonc) で管理する。
-
-```text
-KV Binding: PATCHNOTE_KV
-Cron Trigger: */15 * * * *
-Compatibility Date: 2026-04-30
-```
-
-以下はCloudflare上のSecretsとして管理し、値はリポジトリに保存しない。
-
-```bash
-npx wrangler secret put DISCORD_WEBHOOK_URL_LOL
-npx wrangler secret put DISCORD_WEBHOOK_URL_TFT
-npx wrangler secret put DISCORD_WEBHOOK_URL_OW
-npx wrangler secret put DISCORD_WEBHOOK_URL_POE2
-npx wrangler secret put DISCORD_WEBHOOK_URL_FF14
-npx wrangler secret put DISCORD_MAINTENANCE_FF14
-npx wrangler secret put DISCORD_WEBHOOK_URL_GENSHIN_NOTICE
-npx wrangler secret put DISCORD_WEBHOOK_URL_GENSHIN_NEWS
-```
-
-`POST_ON_FIRST_RUN=true` は初回取得時にも投稿を許可する場合に設定する。
-`keep_vars: true` により、既にダッシュボードで設定している変数をデプロイ時に保持する。
-
-ローカル確認では `.dev.vars.example` を `.dev.vars` として用意する。
+リポジトリのルートから実行します。
 
 ```bash
 npm install
-npm run dev
+npm --prefix workers/discord-bot install
+npm --prefix workers/discord-bot run check
 ```
 
-## 確認
+`check` はCloudflareへのdry-runです。ローカルでWorkerを起動する場合は、`workers/discord-bot/.dev.vars` を用意して次を実行します。
 
 ```bash
-npm run check
+npm --prefix workers/discord-bot run dev
 ```
 
-公開URLへアクセスすると、手動で更新確認を実行して結果をJSONで返す。
+## デプロイ
+
+Cloudflare WorkersのGit連携を使う場合は、Root directoryを `workers/discord-bot`、Deploy commandを `npx wrangler deploy` にします。
+
+手動でデプロイする場合は次を実行します。
+
+```bash
+npm --prefix workers/discord-bot run deploy
+```
+
+Worker名、KV Binding、Cron Trigger、SecretはWikiの手順に従って設定してください。
