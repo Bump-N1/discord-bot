@@ -68,6 +68,9 @@ describe('act web auth', function() {
         expect(isActWebConfigured()).toBe(true);
         expect(getActWebPort()).toBe(3200);
         expect(getActWebHost()).toBe('127.0.0.1');
+
+        process.env.ACT_WEB_PORT = '65536';
+        expect(getActWebPort()).toBe(3100);
     });
 
     it('募集作成/管理リンクに正しいscopeを入れて署名する', function() {
@@ -150,6 +153,16 @@ describe('act web auth', function() {
         }).toThrow('Web画面が設定されていません。');
         expect(function() {
             verifyActWebToken('invalid');
+        }).toThrow('Web画面が設定されていません。');
+    });
+
+    it('HTTP以外のWebベースURLを無効として扱う', function() {
+        process.env.ACT_WEB_BASE_URL = 'javascript:alert(1)';
+        process.env.ACT_WEB_SIGNING_SECRET = 'secret';
+
+        expect(isActWebConfigured()).toBe(false);
+        expect(function() {
+            buildActCreateUrl({});
         }).toThrow('Web画面が設定されていません。');
     });
 });

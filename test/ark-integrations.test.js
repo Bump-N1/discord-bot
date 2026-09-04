@@ -334,4 +334,29 @@ describe('ARK monitor helper decisions', function() {
         })).toBe(true);
         vi.useRealTimers();
     });
+
+    it('サービス終了時のバックアップ失敗を完了扱いにしない', async function() {
+        const send = vi.fn().mockResolvedValue(undefined);
+        const client = {
+            channels: {
+                fetch: vi.fn().mockResolvedValue({
+                    isTextBased: function() {
+                        return true;
+                    },
+                    send: send
+                })
+            }
+        };
+        const state = {};
+
+        await arkBackupMonitorTestables.handleTerminalServiceState(client, state, {
+            status: 'expired'
+        }, {
+            createBackup: vi.fn().mockRejectedValue(new Error('temporary failure'))
+        });
+
+        expect(state.serviceUnavailable).toBe(true);
+        expect(state.finalBackupAttempted).not.toBe(true);
+        expect(send).toHaveBeenCalledTimes(1);
+    });
 });

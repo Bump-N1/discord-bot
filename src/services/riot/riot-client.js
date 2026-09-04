@@ -1,10 +1,12 @@
+import { fetchWithTimeout } from '../../utils/http.js';
+
 const RIOT_API_KEY = process.env.RIOT_API_KEY;
 
 export const RIOT_PLATFORM = 'jp1';
 export const RIOT_REGION = 'asia';
 
 export async function riotFetch(url) {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
         headers: {
             'X-Riot-Token': RIOT_API_KEY
         }

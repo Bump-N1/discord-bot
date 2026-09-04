@@ -1,14 +1,15 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getArkConfig } from './ark-config.js';
 import { getArkAvailability } from './ark-service.js';
+import { writeJsonFileAtomic } from '../../utils/json-file.js';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-const MONITOR_STATE_PATH = path.join(DATA_DIR, 'ark-monitor.json');
+const MONITOR_STATE_PATH = path.resolve(process.cwd(), 'data', 'ark-monitor.json');
 const MONITOR_MODE = 'rcon-status-transition';
 const STATE_CONFIRMATIONS_REQUIRED = 2;
 
 let monitorStarted = false;
+let monitorRunning = false;
 
 export function startArkStatusMonitor(client) {
     if (monitorStarted) {
@@ -30,6 +31,20 @@ export function startArkStatusMonitor(client) {
 }
 
 async function runMonitorTick(client) {
+    if (monitorRunning) {
+        return;
+    }
+
+    monitorRunning = true;
+
+    try {
+        await runMonitorTickInternal(client);
+    } finally {
+        monitorRunning = false;
+    }
+}
+
+async function runMonitorTickInternal(client) {
     const config = getArkConfig();
 
     if (!canMonitorArkStatus(config)) {
@@ -122,10 +137,7 @@ async function readMonitorState() {
 }
 
 async function writeMonitorState(state) {
-    await mkdir(DATA_DIR, {
-        recursive: true
-    });
-    await writeFile(MONITOR_STATE_PATH, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    await writeJsonFileAtomic(MONITOR_STATE_PATH, state);
 }
 
 function logMonitorError(error) {

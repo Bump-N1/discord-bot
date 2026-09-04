@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../utils/http.js';
+
 const POE2_JAPANESE_TRADE_DATA_ROOT = 'https://jp.pathofexile.com/api/trade2/data';
 const POE2_ENGLISH_TRADE_DATA_ROOT = 'https://www.pathofexile.com/api/trade2/data';
 const POE2_OFFICIAL_IMAGE_ROOT = 'https://www.pathofexile.com';
@@ -584,7 +586,7 @@ async function fetchPoe2MarketProducts(userAgent) {
 
     url.searchParams.set('realm', POE2_REALM);
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
         headers: {
             'User-Agent': userAgent,
             Accept: 'application/json',
@@ -1078,7 +1080,7 @@ async function fetchPoe2ItemLabels(dataRoot, userAgent, language) {
 
         url.searchParams.set('realm', POE2_REALM);
 
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
             headers: {
                 'User-Agent': userAgent,
                 Accept: 'application/json',

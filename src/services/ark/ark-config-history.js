@@ -1,7 +1,8 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getArkConfig } from './ark-config.js';
 import { fetchNitradoRestartSchedule, fetchNitradoSettings } from './nitrado-client.js';
+import { writeJsonFileAtomic } from '../../utils/json-file.js';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const HISTORY_PATH = path.join(DATA_DIR, 'ark-config-history.json');
@@ -143,10 +144,7 @@ async function readHistory() {
 }
 
 async function writeHistory(history) {
-    await mkdir(DATA_DIR, {
-        recursive: true
-    });
-    await writeFile(HISTORY_PATH, `${JSON.stringify(history, null, 2)}\n`, 'utf8');
+    await writeJsonFileAtomic(HISTORY_PATH, history);
 }
 
 function logHistoryError(error) {

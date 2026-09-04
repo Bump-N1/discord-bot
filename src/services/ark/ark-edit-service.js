@@ -39,6 +39,7 @@ export async function getArkEditSession() {
 
 export async function resolveArkModDetails(modIds) {
     const config = getArkConfig();
+    assertValidModIds(modIds);
     const normalizedModIds = normalizeModIds(modIds);
 
     if (normalizedModIds.length === 0) {
@@ -63,6 +64,7 @@ export async function applyArkEdit(options) {
     const current = await fetchNitradoServerConfig(config);
     const mapOptions = buildMapOptions(config.mapOptions, current);
     const nextMap = normalizeMap(options.map);
+    assertValidModIds(options.activeMods);
     const nextMods = normalizeModIds(options.activeMods);
     const mapChanged = nextMap !== current.map;
     const modsChanged = !areSameList(current.activeMods, nextMods);
@@ -221,6 +223,26 @@ export function normalizeModIds(value) {
         return String(modId || '').trim();
     }).filter(function(modId) {
         return /^\d+$/u.test(modId);
+    })));
+}
+
+function assertValidModIds(value) {
+    const invalidIds = getInvalidModIds(value);
+
+    if (invalidIds.length > 0) {
+        throw new Error(`MOD IDが正しくありません：${Array.from(new Set(invalidIds)).join(', ')}`);
+    }
+}
+
+export function getInvalidModIds(value) {
+    const values = Array.isArray(value)
+        ? value
+        : String(value || '').split(/[\s,]+/u);
+
+    return Array.from(new Set(values.map(function(modId) {
+        return String(modId || '').trim();
+    }).filter(function(modId) {
+        return modId && !/^\d+$/u.test(modId);
     })));
 }
 

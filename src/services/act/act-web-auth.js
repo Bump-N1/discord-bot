@@ -16,7 +16,7 @@ export function isActWebConfigured() {
 export function getActWebPort() {
     const value = Number(process.env.ACT_WEB_PORT || 3100);
 
-    return Number.isInteger(value) && value > 0 ? value : 3100;
+    return Number.isInteger(value) && value >= 1 && value <= 65535 ? value : 3100;
 }
 
 export function getActWebHost() {
@@ -122,7 +122,11 @@ function getActWebBaseUrl() {
     }
 
     try {
-        return new URL(value).toString();
+        const url = new URL(value);
+
+        return ['http:', 'https:'].includes(url.protocol) && url.hostname
+            ? url.toString()
+            : '';
     } catch (error) {
         return '';
     }

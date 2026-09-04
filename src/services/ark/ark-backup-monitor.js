@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getArkConfig } from './ark-config.js';
 import {
@@ -8,12 +8,13 @@ import {
     getArkServiceAvailability,
     isArkBackupAlreadyRunningError
 } from './ark-backup-service.js';
+import { writeJsonFileAtomic } from '../../utils/json-file.js';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-const MONITOR_STATE_PATH = path.join(DATA_DIR, 'ark-backup-monitor.json');
+const MONITOR_STATE_PATH = path.resolve(process.cwd(), 'data', 'ark-backup-monitor.json');
 const ERROR_NOTIFY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 let monitorStarted = false;
+let monitorRunning = false;
 
 export function startArkBackupMonitor(client) {
     if (monitorStarted) {
@@ -37,6 +38,20 @@ export function startArkBackupMonitor(client) {
 }
 
 async function runMonitorTick(client) {
+    if (monitorRunning) {
+        return;
+    }
+
+    monitorRunning = true;
+
+    try {
+        await runMonitorTickInternal(client);
+    } finally {
+        monitorRunning = false;
+    }
+}
+
+async function runMonitorTickInternal(client) {
     const config = getArkConfig();
 
     if (!canRunArkBackupMonitor(config)) {
@@ -90,7 +105,7 @@ async function runMonitorTick(client) {
     await writeMonitorState(state);
 }
 
-async function handleTerminalServiceState(client, state, availability) {
+async function handleTerminalServiceState(client, state, availability, dependencies = {}) {
     state.serviceUnavailable = true;
     state.lastServiceStatus = availability.status;
 
@@ -98,8 +113,10 @@ async function handleTerminalServiceState(client, state, availability) {
         return;
     }
 
+    const createBackup = dependencies.createBackup || createArkBackup;
+
     try {
-        const result = await createArkBackup({
+        const result = await createBackup({
             reason: 'サービス終了検知'
         });
 
@@ -112,6 +129,7 @@ async function handleTerminalServiceState(client, state, availability) {
         }
 
         await notifyArkChannel(client, buildArkBackupFailureNotificationMessage('サービス終了検知', error));
+        return;
     }
 
     state.finalBackupAttempted = true;
@@ -172,10 +190,7 @@ async function readMonitorState() {
 }
 
 async function writeMonitorState(state) {
-    await mkdir(DATA_DIR, {
-        recursive: true
-    });
-    await writeFile(MONITOR_STATE_PATH, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    await writeJsonFileAtomic(MONITOR_STATE_PATH, state);
 }
 
 function logMonitorError(error) {
@@ -184,5 +199,6 @@ function logMonitorError(error) {
 
 export const __testables = {
     canRunArkBackupMonitor,
-    isBackupDue
+    isBackupDue,
+    handleTerminalServiceState
 };

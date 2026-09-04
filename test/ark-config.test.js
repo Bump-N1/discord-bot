@@ -81,4 +81,18 @@ describe('ARK config', function() {
         expect(config.statusPollMs).toBe(30000);
         expect(config.backupIntervalHours).toBe(DEFAULT_ARK_CONFIG.backupIntervalHours);
     });
+
+    it('短すぎる監視間隔や保存件数0を既定値へ戻す', function() {
+        process.env.ARK_STATUS_POLL_MS = '1';
+        process.env.ARK_CONFIG_HISTORY_POLL_MS = '1';
+        process.env.ARK_BACKUP_POLL_MS = '1';
+        process.env.ARK_BACKUP_RETENTION_COUNT = '0';
+
+        const config = getArkConfig();
+
+        expect(config.statusPollMs).toBe(DEFAULT_ARK_CONFIG.statusPollMs);
+        expect(config.configHistoryPollMs).toBe(DEFAULT_ARK_CONFIG.configHistoryPollMs);
+        expect(config.backupPollMs).toBe(DEFAULT_ARK_CONFIG.backupPollMs);
+        expect(config.backupRetentionCount).toBe(DEFAULT_ARK_CONFIG.backupRetentionCount);
+    });
 });

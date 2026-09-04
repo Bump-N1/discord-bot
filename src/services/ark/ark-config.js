@@ -6,13 +6,17 @@ export const DEFAULT_ARK_CONFIG = {
     backupRetentionCount: 5
 };
 
+const MIN_STATUS_POLL_MS = 1000;
+const MIN_CONFIG_HISTORY_POLL_MS = 10 * 1000;
+const MIN_BACKUP_POLL_MS = 60 * 1000;
+
 export function getArkConfig() {
     return {
-        statusPollMs: getEnvNumber('ARK_STATUS_POLL_MS', DEFAULT_ARK_CONFIG.statusPollMs),
-        configHistoryPollMs: getEnvNumber('ARK_CONFIG_HISTORY_POLL_MS', DEFAULT_ARK_CONFIG.configHistoryPollMs),
-        backupPollMs: getEnvNumber('ARK_BACKUP_POLL_MS', DEFAULT_ARK_CONFIG.backupPollMs),
-        backupIntervalHours: getEnvNumber('ARK_BACKUP_INTERVAL_HOURS', DEFAULT_ARK_CONFIG.backupIntervalHours),
-        backupRetentionCount: getEnvNumber('ARK_BACKUP_RETENTION_COUNT', DEFAULT_ARK_CONFIG.backupRetentionCount),
+        statusPollMs: getEnvNumber('ARK_STATUS_POLL_MS', DEFAULT_ARK_CONFIG.statusPollMs, MIN_STATUS_POLL_MS),
+        configHistoryPollMs: getEnvNumber('ARK_CONFIG_HISTORY_POLL_MS', DEFAULT_ARK_CONFIG.configHistoryPollMs, MIN_CONFIG_HISTORY_POLL_MS),
+        backupPollMs: getEnvNumber('ARK_BACKUP_POLL_MS', DEFAULT_ARK_CONFIG.backupPollMs, MIN_BACKUP_POLL_MS),
+        backupIntervalHours: getEnvNumber('ARK_BACKUP_INTERVAL_HOURS', DEFAULT_ARK_CONFIG.backupIntervalHours, 1),
+        backupRetentionCount: getEnvNumber('ARK_BACKUP_RETENTION_COUNT', DEFAULT_ARK_CONFIG.backupRetentionCount, 1),
         backupDirectory: getEnv('ARK_BACKUP_DIR', 'data/ark-backups'),
         notifyChannelId: getEnv('ARK_NOTIFY_CHANNEL_ID', ''),
         nitradoToken: getEnv('NITRADO_TOKEN', ''),
@@ -27,10 +31,10 @@ function getEnv(name, fallback) {
     return String(process.env[name] || '').trim() || fallback;
 }
 
-function getEnvNumber(name, fallback) {
+function getEnvNumber(name, fallback, minimum = 0) {
     const value = Number(process.env[name]);
 
-    return Number.isFinite(value) && value > 0 ? value : fallback;
+    return Number.isFinite(value) && value >= minimum ? value : fallback;
 }
 
 function getMapOptions() {

@@ -4,6 +4,7 @@ import {
     POE2_MARKET_BASE_CURRENCY_ID,
     POE2_MARKET_DIVINE_CURRENCY_ID
 } from '../services/poe2/poe2-market-definition.js';
+import { fetchWithTimeout } from '../utils/http.js';
 
 const IMAGE_WIDTH = 900;
 const HEADER_HEIGHT = 176;
@@ -163,7 +164,7 @@ async function loadIconDataUrl(iconUrl, userAgent) {
 
 async function fetchIconDataUrl(iconUrl, userAgent) {
     try {
-        const response = await fetch(iconUrl, {
+        const response = await fetchWithTimeout(iconUrl, {
             headers: userAgent
                 ? {
                     'User-Agent': userAgent,
@@ -177,6 +178,11 @@ async function fetchIconDataUrl(iconUrl, userAgent) {
         }
 
         const contentType = response.headers.get('content-type') || 'image/png';
+
+        if (!contentType.toLowerCase().startsWith('image/')) {
+            return '';
+        }
+
         const contents = Buffer.from(await response.arrayBuffer()).toString('base64');
 
         return `data:${contentType};base64,${contents}`;
