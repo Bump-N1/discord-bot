@@ -102,6 +102,7 @@ const SOURCES = [
     {
         game: 'PoE2',
         url: 'https://jp.pathofexile.com/forum/view-forum/2294',
+        forceFreshFetch: true,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_POE2',
         parser: parsePoe2PatchNotes
     },
@@ -2355,5 +2356,6 @@ export const __testables = {
     parseGenshinContentListApi,
     parseFf14WorldMaintenance,
     parseOverwatchPatchNotes,
+    parsePoe2PatchNotes,
     uniquePatchNotes
 };
