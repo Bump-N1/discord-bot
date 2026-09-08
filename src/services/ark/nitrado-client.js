@@ -572,7 +572,20 @@ async function deleteNitradoJson(config, path, query = {}) {
 }
 
 export function isTerminalNitradoServiceError(error) {
-    return [404, 410].includes(Number(error?.status));
+    const status = Number(error?.status);
+
+    if ([404, 410].includes(status)) {
+        return true;
+    }
+
+    if (status !== 500) {
+        return false;
+    }
+
+    return /(?:service is )?currently in state\s+4\b/iu.test([
+        error?.message,
+        error?.body
+    ].filter(Boolean).join(' '));
 }
 
 function parseNitradoStatus(message) {

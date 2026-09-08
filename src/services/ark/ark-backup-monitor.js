@@ -78,6 +78,7 @@ async function runMonitorTickInternal(client) {
     state.serviceUnavailable = false;
     state.finalBackupAttempted = false;
     state.lastServiceStatus = availability.status;
+    state.lastBackupErrorAt = '';
 
     if (!isBackupDue(state, config)) {
         await writeMonitorState(state);

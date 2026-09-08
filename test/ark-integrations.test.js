@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     fetchNitradoServerConfig,
     fetchNitradoSettings,
+    isTerminalNitradoServiceError,
     updateNitradoServerConfig
 } from '../src/services/ark/nitrado-client.js';
 import {
@@ -75,6 +76,24 @@ afterEach(async function() {
 });
 
 describe('Nitrado client integration helpers', function() {
+    it('サービス停止中を示すstate 4の500だけを終端エラーとして扱う', function() {
+        expect(isTerminalNitradoServiceError({
+            status: 500,
+            body: JSON.stringify({
+                message: 'The service is currently in state 4 but it expecting state 2,3.'
+            })
+        })).toBe(true);
+        expect(isTerminalNitradoServiceError({
+            status: 500,
+            body: JSON.stringify({
+                message: 'Internal server error'
+            })
+        })).toBe(false);
+        expect(isTerminalNitradoServiceError({
+            status: 404
+        })).toBe(true);
+    });
+
     it('サーバー設定はNitradoのsettingsを優先して正規化する', async function() {
         global.fetch = vi.fn(async function(url) {
             const requestUrl = new URL(String(url));
@@ -349,6 +368,11 @@ describe('ARK monitor helper decisions', function() {
         };
         const state = {};
 
+        await arkBackupMonitorTestables.handleTerminalServiceState(client, state, {
+            status: 'expired'
+        }, {
+            createBackup: vi.fn().mockRejectedValue(new Error('temporary failure'))
+        });
         await arkBackupMonitorTestables.handleTerminalServiceState(client, state, {
             status: 'expired'
         }, {
