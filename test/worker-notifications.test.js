@@ -242,4 +242,25 @@ describe('patch note Worker', function() {
 
         expect(unique).toHaveLength(1);
     });
+
+    it('OW parses structured patch blocks when the heading format changes', async function() {
+        const html = [
+            '<div class="PatchNotes-patch PatchNotes-live">',
+            '<div class="anchor" id="patch-2026-09-10"></div>',
+            '<div class="PatchNotes-labels"><div class="PatchNotes-date">Sept. 10, 2026</div></div>',
+            '<h3 class="PatchNotes-patchTitle">Overwatch Patch Notes &ndash; Sept. 10, 2026</h3>',
+            '</div>'
+        ].join('');
+
+        const result = await __testables.parseOverwatchPatchNotes(
+            html,
+            'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
+        );
+
+        expect(result).toMatchObject({
+            title: 'Overwatch Patch Notes &ndash; Sept. 10, 2026',
+            date: expect.stringContaining('2026'),
+            url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
+        });
+    });
 });
