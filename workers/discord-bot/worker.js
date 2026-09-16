@@ -76,7 +76,8 @@ const SOURCES = [
         webhookEnvName: 'DISCORD_MAINTENANCE_FF14',
         parser: parseFf14WorldMaintenance,
         checkMultiple: true,
-        postLatestOnFirstRun: true
+        postLatestOnFirstRun: true,
+        retryUnconfirmedLatest: true
     },
     {
         game: 'LoL',
@@ -335,6 +336,9 @@ async function getJsonValue(env, key) {
 async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
     const postedKey = `posted:${source.game}`;
     const latestKey = `latest:${source.game}`;
+    const deliveredKey = source.retryUnconfirmedLatest === true
+        ? 'delivered:' + source.game
+        : '';
     const postedIds = await getPostedIds(env, postedKey);
     const postedIdSet = new Set(postedIds);
     const validPatchNotes = uniquePatchNotes(patchNotes
@@ -388,6 +392,9 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
         }
 
         await savePostedIds(env, postedKey, collectStoredIds(validPatchNotes));
+        if (deliveredKey) {
+            await savePostedIds(env, deliveredKey, getStoredPatchNoteIds(patchNote));
+        }
         await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(patchNote));
 
         results.push({
@@ -400,6 +407,43 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
         return;
     }
 
+    if (source.retryUnconfirmedLatest === true) {
+        const latestPatchNote = validPatchNotes[0];
+        const deliveredIds = await getPostedIds(env, deliveredKey);
+        const deliveredIdSet = new Set(deliveredIds);
+
+        if (isPostedPatchNote(postedIdSet, latestPatchNote)
+            && !isPostedPatchNote(deliveredIdSet, latestPatchNote)) {
+            try {
+                await postToDiscord(webhookUrl, source.game, latestPatchNote);
+            } catch (error) {
+                results.push({
+                    game: source.game,
+                    status: 'post_failed_retry_pending',
+                    title: latestPatchNote.title,
+                    url: latestPatchNote.url,
+                    imageUrl: latestPatchNote.imageUrl || '',
+                    message: error.message
+                });
+                return;
+            }
+
+            await savePostedIds(env, deliveredKey, mergePostedIds(
+                deliveredIds,
+                getStoredPatchNoteIds(latestPatchNote)
+            ));
+            await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(latestPatchNote));
+
+            results.push({
+                game: source.game,
+                status: 'posted',
+                title: latestPatchNote.title,
+                url: latestPatchNote.url,
+                imageUrl: latestPatchNote.imageUrl || ''
+            });
+            return;
+        }
+    }
     const unpostedPatchNotes = validPatchNotes.filter(function(patchNote) {
         return !isPostedPatchNote(postedIdSet, patchNote);
     });
@@ -451,6 +495,9 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
 
         const newPostedIds = mergePostedIds(latestPostedIds, getStoredPatchNoteIds(patchNote));
         await savePostedIds(env, postedKey, newPostedIds);
+        if (deliveredKey) {
+            await savePostedIds(env, deliveredKey, getStoredPatchNoteIds(patchNote));
+        }
         await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(patchNote));
 
         results.push({
