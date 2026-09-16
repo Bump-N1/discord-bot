@@ -221,6 +221,72 @@ describe('patch note Worker', function() {
         ]);
     });
 
+    it('FF14メンテナンスは初回でも最新1件を通知し、現行一覧を重複防止用に保存する', async function() {
+        const source = __testables.SOURCES.find(function(item) {
+            return item.game === 'FF14_MAINTENANCE';
+        });
+        const patchNotes = [
+            {
+                id: 'maintenance-new',
+                title: '全ワールド 緊急メンテナンス作業のお知らせ',
+                description: '日時: 2026年9月17日(木) 15:00より19:00頃まで',
+                date: '',
+                url: 'https://jp.finalfantasyxiv.com/lodestone/news/detail/maintenance-new',
+                imageUrl: ''
+            },
+            {
+                id: 'maintenance-old',
+                title: 'Meteorデータセンター メンテナンス作業のお知らせ',
+                description: '日時: 2026年9月16日(水) 15:00より19:00頃まで',
+                date: '',
+                url: 'https://jp.finalfantasyxiv.com/lodestone/news/detail/maintenance-old',
+                imageUrl: ''
+            }
+        ];
+        const values = new Map();
+        const posts = [];
+        const env = {
+            PATCHNOTE_KV: {
+                get: async function(key) {
+                    return values.get(key) || null;
+                },
+                put: async function(key, value) {
+                    values.set(key, value);
+                }
+            }
+        };
+
+        vi.stubGlobal('fetch', async function(_input, options) {
+            posts.push(JSON.parse(options.body));
+            return new Response('', { status: 200 });
+        });
+
+        const results = [];
+        await __testables.processPatchNotes(
+            env,
+            source,
+            'https://discord.test/webhook',
+            patchNotes,
+            results
+        );
+
+        expect(posts).toHaveLength(1);
+        expect(posts[0].embeds[0].description).toContain('全ワールド 緊急メンテナンス作業のお知らせ');
+        expect(results).toEqual([
+            expect.objectContaining({
+                game: 'FF14_MAINTENANCE',
+                status: 'posted',
+                url: patchNotes[0].url
+            })
+        ]);
+        expect(JSON.parse(values.get('posted:FF14_MAINTENANCE'))).toEqual([
+            'id:maintenance-new',
+            'url:https://jp.finalfantasyxiv.com/lodestone/news/detail/maintenance-new',
+            'id:maintenance-old',
+            'url:https://jp.finalfantasyxiv.com/lodestone/news/detail/maintenance-old'
+        ]);
+    });
+
     it('通常通知は青、FF14メンテナンスだけ赤にする', function() {
         expect(__testables.getDiscordPresentation('Genshin_NOTICE').color).toBe(0x5865F2);
         expect(__testables.getDiscordPresentation('Genshin_NEWS').color).toBe(0x5865F2);

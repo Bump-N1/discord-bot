@@ -75,7 +75,8 @@ const SOURCES = [
         forceFreshFetch: true,
         webhookEnvName: 'DISCORD_MAINTENANCE_FF14',
         parser: parseFf14WorldMaintenance,
-        checkMultiple: true
+        checkMultiple: true,
+        postLatestOnFirstRun: true
     },
     {
         game: 'LoL',
@@ -353,7 +354,7 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
         return;
     }
 
-    if (postedIds.length === 0 && env.POST_ON_FIRST_RUN !== 'true') {
+    if (postedIds.length === 0 && env.POST_ON_FIRST_RUN !== 'true' && source.postLatestOnFirstRun !== true) {
         await savePostedIds(env, postedKey, collectStoredIds(validPatchNotes));
         await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(validPatchNotes[0]));
 
@@ -365,6 +366,36 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
             url: validPatchNotes[0].url,
             imageUrl: validPatchNotes[0].imageUrl || '',
             message: 'first run. saved current entries without posting'
+        });
+        return;
+    }
+
+    if (postedIds.length === 0 && env.POST_ON_FIRST_RUN !== 'true' && source.postLatestOnFirstRun === true) {
+        const patchNote = validPatchNotes[0];
+
+        try {
+            await postToDiscord(webhookUrl, source.game, patchNote);
+        } catch (error) {
+            results.push({
+                game: source.game,
+                status: 'post_failed_retry_pending',
+                title: patchNote.title,
+                url: patchNote.url,
+                imageUrl: patchNote.imageUrl || '',
+                message: error.message
+            });
+            return;
+        }
+
+        await savePostedIds(env, postedKey, collectStoredIds(validPatchNotes));
+        await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(patchNote));
+
+        results.push({
+            game: source.game,
+            status: 'posted',
+            title: patchNote.title,
+            url: patchNote.url,
+            imageUrl: patchNote.imageUrl || ''
         });
         return;
     }
@@ -2376,5 +2407,6 @@ export const __testables = {
     parseFf14WorldMaintenance,
     parseOverwatchPatchNotes,
     parsePoe2PatchNotes,
+    processPatchNotes,
     uniquePatchNotes
 };
