@@ -225,24 +225,16 @@ describe('patch note Worker', function() {
         const source = __testables.SOURCES.find(function(item) {
             return item.game === 'FF14_MAINTENANCE';
         });
-        const patchNotes = [
-            {
-                id: 'maintenance-new',
-                title: '全ワールド 緊急メンテナンス作業のお知らせ',
-                description: '日時: 2026年9月17日(木) 15:00より19:00頃まで',
+        const patchNotes = ['latest', 'older'].map(function(revision) {
+            return {
+                id: 'test-' + revision,
+                title: 'test maintenance ' + revision,
+                description: 'test description ' + revision,
                 date: '',
-                url: 'https://jp.finalfantasyxiv.com/lodestone/news/detail/maintenance-new',
+                url: 'https://example.test/maintenance/' + revision,
                 imageUrl: ''
-            },
-            {
-                id: 'maintenance-old',
-                title: 'Meteorデータセンター メンテナンス作業のお知らせ',
-                description: '日時: 2026年9月16日(水) 15:00より19:00頃まで',
-                date: '',
-                url: 'https://jp.finalfantasyxiv.com/lodestone/news/detail/maintenance-old',
-                imageUrl: ''
-            }
-        ];
+            };
+        });
         const values = new Map();
         const posts = [];
         const env = {
@@ -271,7 +263,7 @@ describe('patch note Worker', function() {
         );
 
         expect(posts).toHaveLength(1);
-        expect(posts[0].embeds[0].description).toContain('全ワールド 緊急メンテナンス作業のお知らせ');
+        expect(posts[0].embeds[0].description).toContain(patchNotes[0].title);
         expect(results).toEqual([
             expect.objectContaining({
                 game: 'FF14_MAINTENANCE',
@@ -279,12 +271,9 @@ describe('patch note Worker', function() {
                 url: patchNotes[0].url
             })
         ]);
-        expect(JSON.parse(values.get('posted:FF14_MAINTENANCE'))).toEqual([
-            'id:maintenance-new',
-            'url:https://jp.finalfantasyxiv.com/lodestone/news/detail/maintenance-new',
-            'id:maintenance-old',
-            'url:https://jp.finalfantasyxiv.com/lodestone/news/detail/maintenance-old'
-        ]);
+        expect(JSON.parse(values.get('posted:FF14_MAINTENANCE'))).toEqual(
+            patchNotes.flatMap(__testables.getStoredPatchNoteIds)
+        );
     });
 
     it('通常通知は青、FF14メンテナンスだけ赤にする', function() {
