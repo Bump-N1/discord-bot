@@ -221,6 +221,61 @@ describe('patch note Worker', function() {
         ]);
     });
 
+    it('FF14メンテナンスは初回でも最新1件を通知し、現行一覧を重複防止用に保存する', async function() {
+        const source = __testables.SOURCES.find(function(item) {
+            return item.game === 'FF14_MAINTENANCE';
+        });
+        const patchNotes = ['latest', 'older'].map(function(revision) {
+            return {
+                id: 'test-' + revision,
+                title: 'test maintenance ' + revision,
+                description: 'test description ' + revision,
+                date: '',
+                url: 'https://example.test/maintenance/' + revision,
+                imageUrl: ''
+            };
+        });
+        const values = new Map();
+        const posts = [];
+        const env = {
+            PATCHNOTE_KV: {
+                get: async function(key) {
+                    return values.get(key) || null;
+                },
+                put: async function(key, value) {
+                    values.set(key, value);
+                }
+            }
+        };
+
+        vi.stubGlobal('fetch', async function(_input, options) {
+            posts.push(JSON.parse(options.body));
+            return new Response('', { status: 200 });
+        });
+
+        const results = [];
+        await __testables.processPatchNotes(
+            env,
+            source,
+            'https://discord.test/webhook',
+            patchNotes,
+            results
+        );
+
+        expect(posts).toHaveLength(1);
+        expect(posts[0].embeds[0].description).toContain(patchNotes[0].title);
+        expect(results).toEqual([
+            expect.objectContaining({
+                game: 'FF14_MAINTENANCE',
+                status: 'posted',
+                url: patchNotes[0].url
+            })
+        ]);
+        expect(JSON.parse(values.get('posted:FF14_MAINTENANCE'))).toEqual(
+            patchNotes.flatMap(__testables.getStoredPatchNoteIds)
+        );
+    });
+
     it('通常通知は青、FF14メンテナンスだけ赤にする', function() {
         expect(__testables.getDiscordPresentation('Genshin_NOTICE').color).toBe(0x5865F2);
         expect(__testables.getDiscordPresentation('Genshin_NEWS').color).toBe(0x5865F2);
