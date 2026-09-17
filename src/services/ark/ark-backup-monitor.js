@@ -11,7 +11,8 @@ import {
 import { writeJsonFileAtomic } from '../../utils/json-file.js';
 
 const MONITOR_STATE_PATH = path.resolve(process.cwd(), 'data', 'ark-backup-monitor.json');
-const ERROR_NOTIFY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const SERVICE_STATUS_CHECK_REASON = 'サービス状態の確認';
+const SCHEDULED_BACKUP_REASON = '定期バックアップ';
 
 let monitorStarted = false;
 let monitorRunning = false;
@@ -64,10 +65,12 @@ async function runMonitorTickInternal(client) {
     try {
         availability = await getArkServiceAvailability();
     } catch (error) {
-        await notifyFailureIfNeeded(client, state, 'サービス状態の確認', error);
+        await notifyFailureIfNeeded(client, state, SERVICE_STATUS_CHECK_REASON, error);
         await writeMonitorState(state);
         return;
     }
+
+    clearFailureState(state, SERVICE_STATUS_CHECK_REASON);
 
     if (!availability.available && availability.terminal) {
         await handleTerminalServiceState(client, state, availability);
@@ -78,7 +81,6 @@ async function runMonitorTickInternal(client) {
     state.serviceUnavailable = false;
     state.finalBackupAttempted = false;
     state.lastServiceStatus = availability.status;
-    state.lastBackupErrorAt = '';
 
     if (!isBackupDue(state, config)) {
         await writeMonitorState(state);
@@ -87,12 +89,12 @@ async function runMonitorTickInternal(client) {
 
     try {
         const result = await createArkBackup({
-            reason: '定期バックアップ'
+            reason: SCHEDULED_BACKUP_REASON
         });
 
         state.lastBackupAt = result.createdAt;
         state.lastBackupId = result.id;
-        state.lastBackupErrorAt = '';
+        clearFailureState(state, SCHEDULED_BACKUP_REASON);
         await notifyArkChannel(client, buildArkBackupNotificationMessage(result));
     } catch (error) {
         if (isArkBackupAlreadyRunningError(error)) {
@@ -100,7 +102,7 @@ async function runMonitorTickInternal(client) {
             return;
         }
 
-        await notifyFailureIfNeeded(client, state, '定期バックアップ', error);
+        await notifyFailureIfNeeded(client, state, SCHEDULED_BACKUP_REASON, error);
     }
 
     await writeMonitorState(state);
@@ -159,15 +161,54 @@ function isBackupDue(state, config) {
     return Date.now() - lastBackupTime >= config.backupIntervalHours * 60 * 60 * 1000;
 }
 
-async function notifyFailureIfNeeded(client, state, reason, error) {
-    const lastErrorAt = Date.parse(state.lastBackupErrorAt || '');
+async function notifyFailureIfNeeded(client, state, reason, error, dependencies = {}) {
+    const errorSignature = buildFailureSignature(reason, error);
+    const failureSignatures = state.backupErrorSignatures
+        && typeof state.backupErrorSignatures === 'object'
+        && !Array.isArray(state.backupErrorSignatures)
+        ? state.backupErrorSignatures
+        : {};
 
-    if (!Number.isNaN(lastErrorAt) && Date.now() - lastErrorAt < ERROR_NOTIFY_COOLDOWN_MS) {
-        return;
+    if (failureSignatures[reason] === errorSignature) {
+        return false;
     }
 
+    const notify = dependencies.notify || notifyArkChannel;
+    await notify(client, buildArkBackupFailureNotificationMessage(reason, error));
+    state.backupErrorSignatures = {
+        ...failureSignatures,
+        [reason]: errorSignature
+    };
+    delete state.lastBackupErrorSignature;
     state.lastBackupErrorAt = new Date().toISOString();
-    await notifyArkChannel(client, buildArkBackupFailureNotificationMessage(reason, error));
+    return true;
+}
+
+function buildFailureSignature(reason, error) {
+    const status = error && error.status !== undefined ? String(error.status) : '';
+    const message = error && error.message ? String(error.message) : String(error || 'unknown error');
+
+    return [reason, status, message].join('|');
+}
+
+function clearFailureState(state, reason) {
+    const failureSignatures = state.backupErrorSignatures;
+
+    if (!reason || !failureSignatures || typeof failureSignatures !== 'object' || Array.isArray(failureSignatures)) {
+        delete state.backupErrorSignatures;
+    } else {
+        delete failureSignatures[reason];
+
+        if (Object.keys(failureSignatures).length === 0) {
+            delete state.backupErrorSignatures;
+        }
+    }
+
+    delete state.lastBackupErrorSignature;
+
+    if (!state.backupErrorSignatures) {
+        state.lastBackupErrorAt = '';
+    }
 }
 
 async function notifyArkChannel(client, content) {
@@ -208,7 +249,10 @@ function logMonitorError(error) {
 }
 
 export const __testables = {
+    buildFailureSignature,
     canRunArkBackupMonitor,
+    clearFailureState,
     isBackupDue,
-    handleTerminalServiceState
+    handleTerminalServiceState,
+    notifyFailureIfNeeded
 };
