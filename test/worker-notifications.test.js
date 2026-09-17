@@ -1,15 +1,180 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readFile } from 'node:fs/promises';
 import { __testables } from '../workers/discord-bot/worker.js';
 
-const NOTIFICATION_FIXTURE_DIRECTORY = new URL('./fixtures/worker-notifications/', import.meta.url);
+function getSourceForParser(parser) {
+    const source = __testables.SOURCES.find(function(item) {
+        return item.parser === parser;
+    });
 
-async function readNotificationFixture(name) {
-    return readFile(new URL(name, NOTIFICATION_FIXTURE_DIRECTORY), 'utf8');
+    if (!source) {
+        throw new Error('Notification source was not configured for parser.');
+    }
+
+    return source;
 }
 
-async function readNotificationJsonFixture(name) {
-    return JSON.parse(await readNotificationFixture(name));
+function createFixtureDate() {
+    const now = new Date();
+
+    return new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        now.getUTCHours(),
+        now.getUTCMinutes(),
+        now.getUTCSeconds()
+    ));
+}
+
+function offsetFixtureDate(baseDate, dayOffset) {
+    const date = new Date(baseDate);
+    date.setUTCDate(date.getUTCDate() + dayOffset);
+
+    return date;
+}
+
+function padFixtureDatePart(value) {
+    return String(value).padStart(2, '0');
+}
+
+function formatGenshinFixtureDate(date) {
+    return `${date.getUTCFullYear()}-${padFixtureDatePart(date.getUTCMonth() + 1)}-${padFixtureDatePart(date.getUTCDate())} ${padFixtureDatePart(date.getUTCHours())}:${padFixtureDatePart(date.getUTCMinutes())}:${padFixtureDatePart(date.getUTCSeconds())}`;
+}
+
+function formatOverwatchFixtureDate(date) {
+    return `${date.getUTCFullYear()}年${date.getUTCMonth() + 1}月${date.getUTCDate()}日`;
+}
+
+function formatOverwatchEnglishFixtureDate(date) {
+    return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'UTC',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+    }).format(date);
+}
+
+function createGenshinOfficialNewsFixture() {
+    const source = getSourceForParser(__testables.parseGenshinOfficialNews);
+    const baseDate = createFixtureDate();
+    const dates = [
+        offsetFixtureDate(baseDate, -2),
+        baseDate,
+        offsetFixtureDate(baseDate, -1)
+    ];
+    const entries = dates.map(function(date, index) {
+        const id = `${date.getTime()}${index}`;
+
+        return {
+            iInfoId: id,
+            sTitle: `fixture-notice-${id}`,
+            dtStartTime: formatGenshinFixtureDate(date)
+        };
+    });
+    const expectedIds = [entries[1].iInfoId, entries[2].iInfoId];
+
+    return {
+        response: {
+            data: {
+                list: entries
+            }
+        },
+        source: {
+            ...source,
+            maxItems: expectedIds.length
+        },
+        expectedIds: expectedIds
+    };
+}
+
+function createOverwatchJapanesePatchFixture(date) {
+    const formattedDate = formatOverwatchFixtureDate(date);
+
+    return {
+        date: formattedDate,
+        title: `${formattedDate} 配信パッチ内容のお知らせ`
+    };
+}
+
+function createOverwatchEnglishPatchHtml(date) {
+    return `<div>Overwatch 2 Retail Patch Notes - ${formatOverwatchEnglishFixtureDate(date)}</div>`;
+}
+
+function createOverwatchStructuredPatchFixture() {
+    const source = getSourceForParser(__testables.parseOverwatchPatchNotes);
+    const date = createFixtureDate();
+    const title = `fixture-patch-${date.getTime()}`;
+
+    return {
+        source: source,
+        html: [
+            `<div class="PatchNotes-patch" id="patch-${date.toISOString().slice(0, 10)}">`,
+            `<h2 class="PatchNotes-patchTitle">${title}</h2>`,
+            `<span class="PatchNotes-date">${formatOverwatchEnglishFixtureDate(date)}</span>`,
+            '</div>'
+        ].join(''),
+        expectedPatchNote: {
+            title: title,
+            date: formatOverwatchFixtureDate(date),
+            url: source.url
+        }
+    };
+}
+
+function createPoe2ForumFixture(kinds) {
+    const source = getSourceForParser(__testables.parsePoe2PatchNotes);
+    const date = createFixtureDate();
+    const version = [
+        date.getUTCFullYear(),
+        date.getUTCMonth() + 1,
+        date.getUTCDate()
+    ].join('.');
+    const notificationKinds = kinds || ['ホットフィックス', 'パッチノート'];
+    const expectedNotes = notificationKinds.map(function(kind, index) {
+        const articleId = `${date.getTime()}-${index}`;
+        const url = new URL(`/forum/view-thread/${articleId}`, source.url).href;
+
+        return {
+            title: `fixture ${version} ${kind}`,
+            url: url
+        };
+    });
+
+    return {
+        source: source,
+        html: expectedNotes.map(function(note) {
+            return `<a href="${new URL(note.url).pathname}">${note.title}</a>`;
+        }).join(''),
+        expectedNotes: expectedNotes
+    };
+}
+
+function createGenshinArticleFixture(source, externalUrl) {
+    const date = createFixtureDate();
+    const id = String(date.getTime());
+
+    return {
+        iInfoId: id,
+        sTitle: `fixture-notice-${id}`,
+        sUrl: externalUrl,
+        dtStartTime: formatGenshinFixtureDate(date),
+        sIntro: `fixture-content-${id}`,
+        categoryName: source.categoryName
+    };
+}
+
+function createFf14MaintenanceFixture() {
+    const source = getSourceForParser(__testables.parseFf14WorldMaintenance);
+    const articleId = `fixture-${createFixtureDate().getTime()}`;
+    const title = `全ワールド 緊急メンテナンス作業 ${articleId}のお知らせ`;
+    const path = `/lodestone/news/detail/${articleId}`;
+
+    return {
+        source: source,
+        title: title,
+        url: new URL(path, source.url).href,
+        html: `<a href="${path}">[続報] ${title}</a>`
+    };
 }
 
 describe('patch note Worker', function() {
@@ -23,45 +188,44 @@ describe('patch note Worker', function() {
     });
 
     it('OW は同じURLのページ更新でもID差分で再通知できる', function() {
-        const source = __testables.SOURCES.find(function(item) {
-            return item.game === 'OW';
-        });
+        const source = getSourceForParser(__testables.parseOverwatchPatchNotes);
+        const date = createFixtureDate();
         const patchNote = __testables.applySourceDedupeOptions(source, {
-            id: '2026/7/9:オーバーウォッチ パッチノート',
-            url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
+            id: `fixture-patch-${date.getTime()}`,
+            url: source.url
         });
 
         expect(__testables.getStoredPatchNoteIds(patchNote)).toEqual([
-            'id:2026/7/9:オーバーウォッチ パッチノート'
+            `id:${patchNote.id}`
         ]);
         expect(__testables.isPostedPatchNote(new Set([
-            'url:https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
+            `url:${source.url}`
         ]), patchNote)).toBe(false);
     });
 
     it('OW の日本語と英語の同一ページ更新から最新日付を拾う', async function() {
+        const source = getSourceForParser(__testables.parseOverwatchPatchNotes);
+        const latestDate = createFixtureDate();
+        const japanesePatch = createOverwatchJapanesePatchFixture(latestDate);
         const html = [
-            '<div>Overwatch 2 Retail Patch Notes - May 21, 2026</div>',
-            '<div>2026年7月9日 配信パッチ内容のお知らせ</div>'
+            createOverwatchEnglishPatchHtml(offsetFixtureDate(latestDate, -1)),
+            `<div>${japanesePatch.title}</div>`
         ].join('');
 
-        const result = await __testables.parseOverwatchPatchNotes(
-            html,
-            'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
-        );
+        const result = await __testables.parseOverwatchPatchNotes(html, source.url);
 
         expect(result).toEqual([expect.objectContaining({
-            id: '2026年7月9日:2026年7月9日 配信パッチ内容のお知らせ',
-            title: '2026年7月9日 配信パッチ内容のお知らせ',
-            date: '2026年7月9日',
-            url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
+            id: `${japanesePatch.date}:${japanesePatch.title}`,
+            title: japanesePatch.title,
+            date: japanesePatch.date,
+            url: source.url
         })]);
     });
 
     it('OW はキャッシュを回避し英語公式ページからも最新更新を補完する', async function() {
-        const source = __testables.SOURCES.find(function(item) {
-            return item.game === 'OW';
-        });
+        const source = getSourceForParser(__testables.parseOverwatchPatchNotes);
+        const latestDate = createFixtureDate();
+        const latestDateText = formatOverwatchFixtureDate(latestDate);
         const requests = [];
 
         vi.stubGlobal('fetch', async function(url, options) {
@@ -72,8 +236,8 @@ describe('patch note Worker', function() {
             });
 
             const body = requestUrl.includes('/en-us/')
-                ? '<div>Overwatch 2 Retail Patch Notes - August 21, 2026</div>'
-                : '<div>[オーバーウォッチ]2026年8月15日配信パッチ内容</div>';
+                ? createOverwatchEnglishPatchHtml(latestDate)
+                : `<div>${createOverwatchJapanesePatchFixture(offsetFixtureDate(latestDate, -1)).title}</div>`;
 
             return {
                 ok: true,
@@ -85,14 +249,15 @@ describe('patch note Worker', function() {
 
         const html = await __testables.fetchSourceText(source);
         const result = await __testables.parseOverwatchPatchNotes(html, source.url);
+        const expectedTitle = `[オーバーウォッチ] ${latestDateText}配信パッチ内容`;
 
         expect(result).toEqual([expect.objectContaining({
-            id: '2026年8月21日:[オーバーウォッチ] 2026年8月21日配信パッチ内容',
-            title: '[オーバーウォッチ] 2026年8月21日配信パッチ内容',
-            date: '2026年8月21日',
-            url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
+            id: `${latestDateText}:${expectedTitle}`,
+            title: expectedTitle,
+            date: latestDateText,
+            url: source.url
         })]);
-        expect(requests).toHaveLength(2);
+        expect(requests).toHaveLength(1 + (source.supplementalUrls || []).length);
 
         for (const request of requests) {
             expect(new URL(request.url).searchParams.has('_patchnote_check')).toBe(true);
@@ -105,9 +270,7 @@ describe('patch note Worker', function() {
     });
 
     it('PoE2はフォーラム一覧のCDNキャッシュを回避して最新記事を拾う', async function() {
-        const source = __testables.SOURCES.find(function(item) {
-            return item.game === 'PoE2';
-        });
+        const fixture = createPoe2ForumFixture(['コンテンツアップデート']);
         const requests = [];
 
         vi.stubGlobal('fetch', async function(url, options) {
@@ -119,20 +282,20 @@ describe('patch note Worker', function() {
             return {
                 ok: true,
                 text: async function() {
-                    return '<a href="/forum/view-thread/4000875">コンテンツアップデート 0.5.5 — Path of Exile 2: Forbidden Rites</a>';
+                    return fixture.html;
                 }
             };
         });
 
-        const html = await __testables.fetchSourceText(source);
-        const result = await __testables.parsePoe2PatchNotes(html, source.url);
+        const html = await __testables.fetchSourceText(fixture.source);
+        const result = await __testables.parsePoe2PatchNotes(html, fixture.source.url, fixture.source.game, fixture.source);
 
         expect(result).toEqual([expect.objectContaining({
-            id: 'https://jp.pathofexile.com/forum/view-thread/4000875',
-            title: 'コンテンツアップデート 0.5.5 — Path of Exile 2: Forbidden Rites',
-            url: 'https://jp.pathofexile.com/forum/view-thread/4000875'
+            id: fixture.expectedNotes[0].url,
+            title: fixture.expectedNotes[0].title,
+            url: fixture.expectedNotes[0].url
         })]);
-        expect(requests).toHaveLength(1);
+        expect(requests).toHaveLength(1 + (fixture.source.supplementalUrls || []).length);
         expect(new URL(requests[0].url).searchParams.has('_patchnote_check')).toBe(true);
         expect(requests[0].options.cache).toBe('no-store');
         expect(requests[0].options.cf).toEqual({
@@ -178,44 +341,33 @@ describe('patch note Worker', function() {
         }
     });
 
-    it('原神APIのsUrlがYouTubeでも公式記事URLを優先する', function() {
+    it('原神APIの外部sUrlでも公式記事URLを優先する', function() {
+        const source = getSourceForParser(__testables.parseGenshinOfficialNews);
+        const externalUrl = new URL(`/external-video/${createFixtureDate().getTime()}`, 'https://example.test').href;
+        const article = createGenshinArticleFixture(source, externalUrl);
         const result = __testables.parseGenshinContentListApi(JSON.stringify({
             data: {
-                list: [
-                    {
-                        iInfoId: '165162',
-                        sTitle: '「空月の歌」予告番組のお知らせ',
-                        sUrl: 'https://www.youtube.com/watch?v=example',
-                        dtStartTime: '2026-07-09 12:00:00',
-                        sIntro: '番組告知'
-                    }
-                ]
+                list: [article]
             }
-        }), {
-            categoryName: '告知'
-        });
+        }), source);
 
         expect(result).toHaveLength(1);
         expect(result[0]).toMatchObject({
-            id: '165162',
-            title: '「空月の歌」予告番組のお知らせ',
-            url: 'https://genshin.hoyoverse.com/ja/news/detail/165162',
-            category: '告知'
+            id: article.iInfoId,
+            title: article.sTitle,
+            category: source.categoryName
         });
+        expect(result[0].url).not.toBe(externalUrl);
+        expect(new URL(result[0].url).pathname).toContain(article.iInfoId);
     });
 
     it('原神は公式APIの複数記事を公開日時順に保持する', async function() {
-        const fixture = await readNotificationJsonFixture('genshin-official-news.json');
-
-        vi.stubGlobal('fetch', async function() {
-            return new Response('', { status: 200 });
-        });
-
+        const fixture = createGenshinOfficialNewsFixture();
         const result = await __testables.parseGenshinOfficialNews(
             JSON.stringify(fixture.response),
             fixture.source.url,
             fixture.source.game,
-            fixture.source.options
+            fixture.source
         );
 
         expect(result.map(function(item) {
@@ -229,23 +381,19 @@ describe('patch note Worker', function() {
     });
 
     it('FF14メンテナンスは記事詳細取得に失敗しても一覧タイトルで通知対象を作る', async function() {
-        const fallbackTitle = '全ワールド 緊急メンテナンス作業 終了時間変更のお知らせ';
-        const fallbackUrl = 'https://jp.finalfantasyxiv.com/lodestone/news/detail/maintenance-change-test';
+        const fixture = createFf14MaintenanceFixture();
 
         vi.stubGlobal('fetch', async function() {
             throw new Error('network timeout');
         });
 
-        const result = await __testables.parseFf14WorldMaintenance(
-            `<a href="/lodestone/news/detail/maintenance-change-test">[続報] ${fallbackTitle}</a>`,
-            'https://jp.finalfantasyxiv.com/lodestone/news/category/2'
-        );
+        const result = await __testables.parseFf14WorldMaintenance(fixture.html, fixture.source.url);
 
         expect(result).toEqual([
             expect.objectContaining({
-                id: fallbackUrl,
-                title: fallbackTitle,
-                url: fallbackUrl
+                id: fixture.url,
+                title: fixture.title,
+                url: fixture.url
             })
         ]);
     });
@@ -535,26 +683,24 @@ describe('patch note Worker', function() {
     });
 
     it('OWは構造化された公式パッチ一覧を解析できる', async function() {
-        const fixture = await readNotificationJsonFixture('overwatch-structured-patch-note.json');
-        const html = await readNotificationFixture(fixture.htmlFile);
+        const fixture = createOverwatchStructuredPatchFixture();
         const result = await __testables.parseOverwatchPatchNotes(
-            html,
+            fixture.html,
             fixture.source.url,
             fixture.source.game,
-            fixture.source.options
+            fixture.source
         );
 
         expect(result).toEqual([expect.objectContaining(fixture.expectedPatchNote)]);
     });
 
     it('PoE2は公式フォーラムのホットフィックスも通知対象にする', async function() {
-        const fixture = await readNotificationJsonFixture('poe2-forum-notifications.json');
-        const html = await readNotificationFixture(fixture.htmlFile);
+        const fixture = createPoe2ForumFixture();
         const result = await __testables.parsePoe2PatchNotes(
-            html,
+            fixture.html,
             fixture.source.url,
             fixture.source.game,
-            fixture.source.options
+            fixture.source
         );
 
         expect(result.map(function(item) {
