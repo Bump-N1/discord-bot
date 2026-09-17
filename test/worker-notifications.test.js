@@ -39,12 +39,12 @@ describe('patch note Worker', function() {
             'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
         );
 
-        expect(result).toMatchObject({
+        expect(result).toEqual([expect.objectContaining({
             id: '2026年7月9日:2026年7月9日 配信パッチ内容のお知らせ',
             title: '2026年7月9日 配信パッチ内容のお知らせ',
             date: '2026年7月9日',
             url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
-        });
+        })]);
     });
 
     it('OW はキャッシュを回避し英語公式ページからも最新更新を補完する', async function() {
@@ -75,12 +75,12 @@ describe('patch note Worker', function() {
         const html = await __testables.fetchSourceText(source);
         const result = await __testables.parseOverwatchPatchNotes(html, source.url);
 
-        expect(result).toMatchObject({
+        expect(result).toEqual([expect.objectContaining({
             id: '2026年8月21日:[オーバーウォッチ] 2026年8月21日配信パッチ内容',
             title: '[オーバーウォッチ] 2026年8月21日配信パッチ内容',
             date: '2026年8月21日',
             url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
-        });
+        })]);
         expect(requests).toHaveLength(2);
 
         for (const request of requests) {
@@ -116,11 +116,11 @@ describe('patch note Worker', function() {
         const html = await __testables.fetchSourceText(source);
         const result = await __testables.parsePoe2PatchNotes(html, source.url);
 
-        expect(result).toMatchObject({
+        expect(result).toEqual([expect.objectContaining({
             id: 'https://jp.pathofexile.com/forum/view-thread/4000875',
             title: 'コンテンツアップデート 0.5.5 — Path of Exile 2: Forbidden Rites',
             url: 'https://jp.pathofexile.com/forum/view-thread/4000875'
-        });
+        })]);
         expect(requests).toHaveLength(1);
         expect(new URL(requests[0].url).searchParams.has('_patchnote_check')).toBe(true);
         expect(requests[0].options.cache).toBe('no-store');
@@ -193,6 +193,40 @@ describe('patch note Worker', function() {
         });
     });
 
+    it('原神は公式APIの複数記事を公開日時順に保持する', async function() {
+        vi.stubGlobal('fetch', async function() {
+            return new Response('', { status: 200 });
+        });
+
+        const result = await __testables.parseGenshinOfficialNews(JSON.stringify({
+            data: {
+                list: [
+                    {
+                        iInfoId: '900001',
+                        sTitle: 'Synthetic notice one',
+                        dtStartTime: '2026-09-01 10:00:00'
+                    },
+                    {
+                        iInfoId: '900003',
+                        sTitle: 'Synthetic notice three',
+                        dtStartTime: '2026-09-03 10:00:00'
+                    },
+                    {
+                        iInfoId: '900002',
+                        sTitle: 'Synthetic notice two',
+                        dtStartTime: '2026-09-02 10:00:00'
+                    }
+                ]
+            }
+        }), 'https://genshin.hoyoverse.com/ja/news/396', 'Genshin_NOTICE', {
+            categoryName: '告知',
+            maxItems: 2
+        });
+
+        expect(result.map(function(item) {
+            return item.id;
+        })).toEqual(['900003', '900002']);
+    });
     it('FF14メンテナンスは緊急メンテを拾い、アプリ系は除外する', function() {
         expect(__testables.isFf14MaintenanceNewsTitle('全ワールド 緊急メンテナンス作業のお知らせ')).toBe(true);
         expect(__testables.isFf14MaintenanceNewsTitle('Meteorデータセンター メンテナンス作業のお知らせ')).toBe(true);
@@ -353,6 +387,295 @@ describe('patch note Worker', function() {
         ]);
     });
 
+    it('FF14メンテナンス取得失敗は一度だけ警告し、復旧後の再発は再通知する', async function() {
+        const source = __testables.SOURCES.find(function(item) {
+            return item.game === 'FF14_MAINTENANCE';
+        });
+        const originalParser = source.parser;
+        const originalFetchAttempts = source.fetchAttempts;
+        const originalRetryWaitMilliseconds = source.fetchRetryWaitMilliseconds;
+        const values = new Map();
+        const webhookPosts = [];
+        let sourceAvailable = false;
+        let sourceRequestCount = 0;
+        source.fetchAttempts = 4;
+        source.fetchRetryWaitMilliseconds = 0;
+
+        const env = {
+            DISCORD_MAINTENANCE_FF14: 'https://discord.test/webhook',
+            PATCHNOTE_KV: {
+                get: async function(key) {
+                    return values.get(key) || null;
+                },
+                put: async function(key, value) {
+                    values.set(key, value);
+                },
+                delete: async function(key) {
+                    values.delete(key);
+                }
+            }
+        };
+
+        vi.stubGlobal('fetch', async function(input, options) {
+            if (String(input).startsWith('https://discord.test/')) {
+                webhookPosts.push(JSON.parse(options.body));
+                return new Response('', { status: 200 });
+            }
+
+            sourceRequestCount += 1;
+            return sourceAvailable
+                ? new Response('synthetic source response', { status: 200 })
+                : new Response('', { status: 503 });
+        });
+
+        try {
+            const firstResults = await __testables.runPatchNoteChecks(env);
+            const secondResults = await __testables.runPatchNoteChecks(env);
+            const alertCount = function() {
+                return webhookPosts.filter(function(payload) {
+                    return payload.embeds[0].description.includes('⚠️ FF14メンテナンス情報を取得できません');
+                }).length;
+            };
+
+            expect(firstResults).toContainEqual(expect.objectContaining({
+                game: 'FF14_MAINTENANCE',
+                status: 'error',
+                message: 'failed to fetch source page'
+            }));
+            expect(secondResults).toContainEqual(expect.objectContaining({
+                game: 'FF14_MAINTENANCE',
+                status: 'error',
+                message: 'failed to fetch source page'
+            }));
+            expect(sourceRequestCount).toBe(8);
+            expect(alertCount()).toBe(1);
+
+            sourceAvailable = true;
+            const emptyResults = await __testables.runPatchNoteChecks(env);
+
+            expect(emptyResults).toContainEqual(expect.objectContaining({
+                game: 'FF14_MAINTENANCE',
+                status: 'error',
+                message: 'latest patch note was not found'
+            }));
+            expect(alertCount()).toBe(1);
+
+            source.parser = async function() {
+                return [{
+                    id: 'synthetic-maintenance',
+                    title: 'Synthetic maintenance',
+                    description: '',
+                    date: '',
+                    url: 'https://example.test/maintenance/synthetic',
+                    imageUrl: ''
+                }];
+            };
+            const recoveredResults = await __testables.runPatchNoteChecks(env);
+
+            expect(recoveredResults).toContainEqual(expect.objectContaining({
+                game: 'FF14_MAINTENANCE',
+                status: 'posted',
+                url: 'https://example.test/maintenance/synthetic'
+            }));
+            expect(values.has('source-failure-alert:FF14_MAINTENANCE')).toBe(false);
+
+            sourceAvailable = false;
+            await __testables.runPatchNoteChecks(env);
+
+            expect(alertCount()).toBe(2);
+            expect(sourceRequestCount).toBe(15);
+        } finally {
+            source.parser = originalParser;
+            source.fetchAttempts = originalFetchAttempts;
+
+            if (originalRetryWaitMilliseconds === undefined) {
+                delete source.fetchRetryWaitMilliseconds;
+            } else {
+                source.fetchRetryWaitMilliseconds = originalRetryWaitMilliseconds;
+            }
+        }
+    });
+
+    it('全通知元は公式URL、複数件取得、障害監視の要件を持つ', function() {
+        const allowedHosts = new Set([
+            'jp.finalfantasyxiv.com',
+            'www.leagueoflegends.com',
+            'teamfighttactics.leagueoflegends.com',
+            'overwatch.blizzard.com',
+            'jp.pathofexile.com',
+            'sg-public-api-static.hoyoverse.com',
+            'genshin.hoyoverse.com'
+        ]);
+
+        expect(__testables.SOURCES).toHaveLength(8);
+
+        for (const source of __testables.SOURCES) {
+            expect(source.displayName).toBeTruthy();
+            expect(source.forceFreshFetch).toBe(true);
+            expect(source.checkMultiple).toBe(true);
+            expect(source.maxItems).toBeGreaterThan(0);
+            expect(source.rssFallbackUrl).toBeUndefined();
+            expect(allowedHosts.has(new URL(source.url).hostname)).toBe(true);
+
+            for (const fallbackUrl of source.fallbackUrls || []) {
+                expect(allowedHosts.has(new URL(fallbackUrl).hostname)).toBe(true);
+            }
+
+            for (const supplementalUrl of source.supplementalUrls || []) {
+                expect(allowedHosts.has(new URL(supplementalUrl).hostname)).toBe(true);
+            }
+        }
+    });
+
+    it('通知元の一覧取得は既定4回、FF14メンテナンスは5回再試行する', function() {
+        const ff14Maintenance = __testables.SOURCES.find(function(source) {
+            return source.game === 'FF14_MAINTENANCE';
+        });
+        const lol = __testables.SOURCES.find(function(source) {
+            return source.game === 'LoL';
+        });
+
+        expect(__testables.getSourceFetchOptions(lol).attempts).toBe(4);
+        expect(__testables.getSourceFetchOptions(ff14Maintenance).attempts).toBe(5);
+    });
+
+    it('OWは構造化された公式パッチ一覧を解析できる', async function() {
+        const result = await __testables.parseOverwatchPatchNotes([
+            '<div class="PatchNotes-patch" id="patch-2026-09-10">',
+            '<h2 class="PatchNotes-patchTitle">Overwatch 2 Patch Notes</h2>',
+            '<span class="PatchNotes-date">September 10, 2026</span>',
+            '</div>'
+        ].join(''), 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/', 'OW', {
+            maxItems: 1
+        });
+
+        expect(result).toEqual([expect.objectContaining({
+            title: 'Overwatch 2 Patch Notes',
+            date: '2026年9月10日',
+            url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
+        })]);
+    });
+
+    it('PoE2は公式フォーラムのホットフィックスも通知対象にする', async function() {
+        const result = await __testables.parsePoe2PatchNotes([
+            '<a href="/forum/view-thread/1002">0.5.6 ホットフィックス</a>',
+            '<a href="/forum/view-thread/1001">0.5.5 パッチノート</a>'
+        ].join(''), 'https://jp.pathofexile.com/forum/view-forum/2294', 'PoE2', {
+            maxItems: 10
+        });
+
+        expect(result).toEqual([
+            expect.objectContaining({
+                title: '0.5.6 ホットフィックス',
+                url: 'https://jp.pathofexile.com/forum/view-thread/1002'
+            }),
+            expect.objectContaining({
+                title: '0.5.5 パッチノート',
+                url: 'https://jp.pathofexile.com/forum/view-thread/1001'
+            })
+        ]);
+    });
+
+    it('Discord送信失敗は監視Webhookへ一度だけ知らせ、成功後の再発は再通知する', async function() {
+        const source = __testables.SOURCES.find(function(item) {
+            return item.game === 'LoL';
+        });
+        const originalParser = source.parser;
+        const originalPostLatestOnFirstRun = source.postLatestOnFirstRun;
+        const values = new Map();
+        const alertPosts = [];
+        let sourceWebhookAvailable = false;
+        let revision = 1;
+        source.postLatestOnFirstRun = true;
+        source.parser = async function() {
+            return [{
+                id: 'synthetic-delivery-' + revision,
+                title: 'Synthetic delivery notification',
+                description: '',
+                date: '',
+                url: 'https://example.test/notification/' + revision,
+                imageUrl: ''
+            }];
+        };
+
+        const env = {
+            DISCORD_WEBHOOK_URL_LOL: 'https://discord.test/source-webhook',
+            DISCORD_ALERT_WEBHOOK_URL: 'https://discord.test/alert-webhook',
+            PATCHNOTE_KV: {
+                get: async function(key) {
+                    return values.get(key) || null;
+                },
+                put: async function(key, value) {
+                    values.set(key, value);
+                },
+                delete: async function(key) {
+                    values.delete(key);
+                }
+            }
+        };
+
+        vi.stubGlobal('fetch', async function(input, options) {
+            const requestUrl = String(input);
+
+            if (requestUrl.startsWith('https://discord.test/alert-webhook')) {
+                alertPosts.push(JSON.parse(options.body));
+                return new Response(null, { status: 204 });
+            }
+
+            if (requestUrl.startsWith('https://discord.test/source-webhook')) {
+                return sourceWebhookAvailable
+                    ? new Response(null, { status: 204 })
+                    : new Response('', { status: 500 });
+            }
+
+            return new Response('synthetic source list', { status: 200 });
+        });
+
+        try {
+            const firstResults = await __testables.runPatchNoteChecks(env);
+            const secondResults = await __testables.runPatchNoteChecks(env);
+
+            expect(firstResults).toContainEqual(expect.objectContaining({
+                game: 'LoL',
+                status: 'post_failed_retry_pending',
+                alertStatus: 'sent'
+            }));
+            expect(secondResults).toContainEqual(expect.objectContaining({
+                game: 'LoL',
+                status: 'post_failed_retry_pending',
+                alertStatus: 'already_notified'
+            }));
+            expect(alertPosts).toHaveLength(1);
+
+            sourceWebhookAvailable = true;
+            const recoveredResults = await __testables.runPatchNoteChecks(env);
+
+            expect(recoveredResults).toContainEqual(expect.objectContaining({
+                game: 'LoL',
+                status: 'posted'
+            }));
+            expect(values.has('delivery-failure-alert:LoL')).toBe(false);
+
+            revision = 2;
+            sourceWebhookAvailable = false;
+            const recurringFailureResults = await __testables.runPatchNoteChecks(env);
+
+            expect(recurringFailureResults).toContainEqual(expect.objectContaining({
+                game: 'LoL',
+                status: 'post_failed_retry_pending',
+                alertStatus: 'sent'
+            }));
+            expect(alertPosts).toHaveLength(2);
+        } finally {
+            source.parser = originalParser;
+
+            if (originalPostLatestOnFirstRun === undefined) {
+                delete source.postLatestOnFirstRun;
+            } else {
+                source.postLatestOnFirstRun = originalPostLatestOnFirstRun;
+            }
+        }
+    });
     it('通常通知は青、FF14メンテナンスだけ赤にする', function() {
         expect(__testables.getDiscordPresentation('Genshin_NOTICE').color).toBe(0x5865F2);
         expect(__testables.getDiscordPresentation('Genshin_NEWS').color).toBe(0x5865F2);
