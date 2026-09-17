@@ -163,10 +163,11 @@ function createGenshinArticleFixture(source, externalUrl) {
     };
 }
 
-function createFf14MaintenanceFixture() {
+function createFf14MaintenanceFixture(isEmergency) {
     const source = getSourceForParser(__testables.parseFf14WorldMaintenance);
     const articleId = `fixture-${createFixtureDate().getTime()}`;
-    const title = `全ワールド 緊急メンテナンス作業 ${articleId}のお知らせ`;
+    const maintenanceType = isEmergency ? '緊急メンテナンス作業' : 'メンテナンス作業';
+    const title = `全ワールド ${maintenanceType}のお知らせ`;
     const path = `/lodestone/news/detail/${articleId}`;
 
     return {
@@ -374,14 +375,17 @@ describe('patch note Worker', function() {
             return item.id;
         })).toEqual(fixture.expectedIds);
     });
-    it('FF14メンテナンスは緊急メンテを拾い、アプリ系は除外する', function() {
-        expect(__testables.isFf14MaintenanceNewsTitle('全ワールド 緊急メンテナンス作業のお知らせ')).toBe(true);
-        expect(__testables.isFf14MaintenanceNewsTitle('Meteorデータセンター メンテナンス作業のお知らせ')).toBe(true);
+    it('FF14メンテナンスは通常・緊急を拾い、アプリ系は除外する', function() {
+        const normalMaintenance = createFf14MaintenanceFixture(false);
+        const emergencyMaintenance = createFf14MaintenanceFixture(true);
+
+        expect(__testables.isFf14MaintenanceNewsTitle(normalMaintenance.title)).toBe(true);
+        expect(__testables.isFf14MaintenanceNewsTitle(emergencyMaintenance.title)).toBe(true);
         expect(__testables.isFf14MaintenanceNewsTitle('コンパニオンアプリ 緊急メンテナンス作業のお知らせ')).toBe(false);
     });
 
-    it('FF14メンテナンスは記事詳細取得に失敗しても一覧タイトルで通知対象を作る', async function() {
-        const fixture = createFf14MaintenanceFixture();
+    it('FF14通常メンテは記事詳細取得に失敗しても一覧タイトルで通知対象を作る', async function() {
+        const fixture = createFf14MaintenanceFixture(false);
 
         vi.stubGlobal('fetch', async function() {
             throw new Error('network timeout');
