@@ -1,0 +1,15 @@
+{
+  "htmlFile": "overwatch-structured-patch-note.html",
+  "source": {
+    "url": "https://overwatch.blizzard.com/ja-jp/news/patch-notes/",
+    "game": "OW",
+    "options": {
+      "maxItems": 1
+    }
+  },
+  "expectedPatchNote": {
+    "title": "Overwatch 2 Patch Notes",
+    "date": "2026年9月10日",
+    "url": "https://overwatch.blizzard.com/ja-jp/news/patch-notes/"
+  }
+}

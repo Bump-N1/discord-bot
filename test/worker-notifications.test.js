@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
 import { __testables } from '../workers/discord-bot/worker.js';
+
+const NOTIFICATION_FIXTURE_DIRECTORY = new URL('./fixtures/worker-notifications/', import.meta.url);
+
+async function readNotificationFixture(name) {
+    return readFile(new URL(name, NOTIFICATION_FIXTURE_DIRECTORY), 'utf8');
+}
+
+async function readNotificationJsonFixture(name) {
+    return JSON.parse(await readNotificationFixture(name));
+}
 
 describe('patch note Worker', function() {
     afterEach(function() {
@@ -194,38 +205,22 @@ describe('patch note Worker', function() {
     });
 
     it('原神は公式APIの複数記事を公開日時順に保持する', async function() {
+        const fixture = await readNotificationJsonFixture('genshin-official-news.json');
+
         vi.stubGlobal('fetch', async function() {
             return new Response('', { status: 200 });
         });
 
-        const result = await __testables.parseGenshinOfficialNews(JSON.stringify({
-            data: {
-                list: [
-                    {
-                        iInfoId: '900001',
-                        sTitle: 'Synthetic notice one',
-                        dtStartTime: '2026-09-01 10:00:00'
-                    },
-                    {
-                        iInfoId: '900003',
-                        sTitle: 'Synthetic notice three',
-                        dtStartTime: '2026-09-03 10:00:00'
-                    },
-                    {
-                        iInfoId: '900002',
-                        sTitle: 'Synthetic notice two',
-                        dtStartTime: '2026-09-02 10:00:00'
-                    }
-                ]
-            }
-        }), 'https://genshin.hoyoverse.com/ja/news/396', 'Genshin_NOTICE', {
-            categoryName: '告知',
-            maxItems: 2
-        });
+        const result = await __testables.parseGenshinOfficialNews(
+            JSON.stringify(fixture.response),
+            fixture.source.url,
+            fixture.source.game,
+            fixture.source.options
+        );
 
         expect(result.map(function(item) {
             return item.id;
-        })).toEqual(['900003', '900002']);
+        })).toEqual(fixture.expectedIds);
     });
     it('FF14メンテナンスは緊急メンテを拾い、アプリ系は除外する', function() {
         expect(__testables.isFf14MaintenanceNewsTitle('全ワールド 緊急メンテナンス作業のお知らせ')).toBe(true);
@@ -540,40 +535,34 @@ describe('patch note Worker', function() {
     });
 
     it('OWは構造化された公式パッチ一覧を解析できる', async function() {
-        const result = await __testables.parseOverwatchPatchNotes([
-            '<div class="PatchNotes-patch" id="patch-2026-09-10">',
-            '<h2 class="PatchNotes-patchTitle">Overwatch 2 Patch Notes</h2>',
-            '<span class="PatchNotes-date">September 10, 2026</span>',
-            '</div>'
-        ].join(''), 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/', 'OW', {
-            maxItems: 1
-        });
+        const fixture = await readNotificationJsonFixture('overwatch-structured-patch-note.json');
+        const html = await readNotificationFixture(fixture.htmlFile);
+        const result = await __testables.parseOverwatchPatchNotes(
+            html,
+            fixture.source.url,
+            fixture.source.game,
+            fixture.source.options
+        );
 
-        expect(result).toEqual([expect.objectContaining({
-            title: 'Overwatch 2 Patch Notes',
-            date: '2026年9月10日',
-            url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
-        })]);
+        expect(result).toEqual([expect.objectContaining(fixture.expectedPatchNote)]);
     });
 
     it('PoE2は公式フォーラムのホットフィックスも通知対象にする', async function() {
-        const result = await __testables.parsePoe2PatchNotes([
-            '<a href="/forum/view-thread/1002">0.5.6 ホットフィックス</a>',
-            '<a href="/forum/view-thread/1001">0.5.5 パッチノート</a>'
-        ].join(''), 'https://jp.pathofexile.com/forum/view-forum/2294', 'PoE2', {
-            maxItems: 10
-        });
+        const fixture = await readNotificationJsonFixture('poe2-forum-notifications.json');
+        const html = await readNotificationFixture(fixture.htmlFile);
+        const result = await __testables.parsePoe2PatchNotes(
+            html,
+            fixture.source.url,
+            fixture.source.game,
+            fixture.source.options
+        );
 
-        expect(result).toEqual([
-            expect.objectContaining({
-                title: '0.5.6 ホットフィックス',
-                url: 'https://jp.pathofexile.com/forum/view-thread/1002'
-            }),
-            expect.objectContaining({
-                title: '0.5.5 パッチノート',
-                url: 'https://jp.pathofexile.com/forum/view-thread/1001'
-            })
-        ]);
+        expect(result.map(function(item) {
+            return {
+                title: item.title,
+                url: item.url
+            };
+        })).toEqual(fixture.expectedNotes);
     });
 
     it('Discord送信失敗は監視Webhookへ一度だけ知らせ、成功後の再発は再通知する', async function() {
