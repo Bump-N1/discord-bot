@@ -354,6 +354,90 @@ describe('ARK monitor helper decisions', function() {
         vi.useRealTimers();
     });
 
+    it('同じバックアップ障害は復旧まで1回だけ通知する', async function() {
+        const fixtureId = Date.now();
+        const reason = `fixture-reason-${fixtureId}`;
+        const error = new Error(`fixture-error-${fixtureId}`);
+        error.status = 500;
+        const notify = vi.fn().mockResolvedValue(undefined);
+        const state = {};
+
+        await expect(arkBackupMonitorTestables.notifyFailureIfNeeded(
+            {},
+            state,
+            reason,
+            error,
+            { notify: notify }
+        )).resolves.toBe(true);
+        await expect(arkBackupMonitorTestables.notifyFailureIfNeeded(
+            {},
+            state,
+            reason,
+            error,
+            { notify: notify }
+        )).resolves.toBe(false);
+
+        expect(notify).toHaveBeenCalledTimes(1);
+        expect(state.backupErrorSignatures[reason]).toBe(
+            arkBackupMonitorTestables.buildFailureSignature(reason, error)
+        );
+    });
+
+    it('障害原因の変更と該当処理の復旧後だけ再通知する', async function() {
+        const fixtureId = Date.now();
+        const reason = `fixture-reason-${fixtureId}`;
+        const otherReason = `fixture-other-reason-${fixtureId}`;
+        const firstError = new Error(`fixture-error-${fixtureId}`);
+        firstError.status = 500;
+        const changedError = new Error(`fixture-error-changed-${fixtureId}`);
+        changedError.status = 503;
+        const notify = vi.fn().mockResolvedValue(undefined);
+        const state = {};
+
+        await arkBackupMonitorTestables.notifyFailureIfNeeded(
+            {},
+            state,
+            reason,
+            firstError,
+            { notify: notify }
+        );
+        await arkBackupMonitorTestables.notifyFailureIfNeeded(
+            {},
+            state,
+            reason,
+            changedError,
+            { notify: notify }
+        );
+        await arkBackupMonitorTestables.notifyFailureIfNeeded(
+            {},
+            state,
+            otherReason,
+            firstError,
+            { notify: notify }
+        );
+
+        arkBackupMonitorTestables.clearFailureState(state, reason);
+
+        await arkBackupMonitorTestables.notifyFailureIfNeeded(
+            {},
+            state,
+            reason,
+            firstError,
+            { notify: notify }
+        );
+        await expect(arkBackupMonitorTestables.notifyFailureIfNeeded(
+            {},
+            state,
+            otherReason,
+            firstError,
+            { notify: notify }
+        )).resolves.toBe(false);
+
+        expect(notify).toHaveBeenCalledTimes(4);
+        expect(state.backupErrorSignatures[otherReason]).toBeTruthy();
+        expect(state.lastBackupErrorAt).toBeTruthy();
+    });
+
     it('サービス終了時のバックアップ失敗を1回で打ち切る', async function() {
         const send = vi.fn().mockResolvedValue(undefined);
         const client = {

@@ -5,7 +5,8 @@ const LOCK_CONFIRM_WAIT_MILLISECONDS = 700;
 const POSTED_HISTORY_LIMIT = 100;
 const FETCH_TIMEOUT_MILLISECONDS = 10000;
 const FETCH_RETRY_WAIT_MILLISECONDS = 1000;
-const SOURCE_FETCH_ATTEMPTS = 4;
+const SOURCE_FETCH_ATTEMPTS = 2;
+const SOURCE_CHECK_CONCURRENCY = 2;
 const SOURCE_FAILURE_ALERT_WEBHOOK_ENV_NAME = 'DISCORD_ALERT_WEBHOOK_URL';
 const FF14_MAINTENANCE_ARTICLE_TIMEOUT_MILLISECONDS = 8000;
 const ENRICHMENT_FETCH_TIMEOUT_MILLISECONDS = 8000;
@@ -84,7 +85,7 @@ const SOURCES = [
         maxItems: 30,
         postLatestOnFirstRun: true,
         retryUnconfirmedLatest: true,
-        fetchAttempts: 5,
+        fetchAttempts: 3,
         fetchRetryWaitMilliseconds: 1000
     },
     {
@@ -221,11 +222,35 @@ async function checkPatchNotes(env) {
 }
 
 async function runPatchNoteChecks(env) {
-    const sourceResultGroups = await Promise.all(SOURCES.map(function(source) {
-        return runSourceCheck(env, source);
-    }));
+    const sourceResultGroups = await mapWithConcurrency(
+        SOURCES,
+        SOURCE_CHECK_CONCURRENCY,
+        function(source) {
+            return runSourceCheck(env, source);
+        }
+    );
 
     return sourceResultGroups.flat();
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+    const results = new Array(items.length);
+    const workerCount = Math.min(Math.max(1, concurrency), items.length);
+    let nextIndex = 0;
+
+    async function runWorker() {
+        while (nextIndex < items.length) {
+            const currentIndex = nextIndex;
+            nextIndex += 1;
+            results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+        }
+    }
+
+    await Promise.all(Array.from({ length: workerCount }, function() {
+        return runWorker();
+    }));
+
+    return results;
 }
 
 async function runSourceCheck(env, source) {
@@ -263,11 +288,12 @@ async function runSourceCheck(env, source) {
         await processPatchNotes(env, source, webhookUrl, patchNotes, results);
         await updateDeliveryFailureAlert(env, source, webhookUrl, results.slice(resultStartIndex));
     } catch (error) {
-        await recordSourceFailure(results, env, source, webhookUrl, 'unexpected source processing failure');
+        const failureMessage = getSourceFailureMessage(error);
+        await recordSourceFailure(results, env, source, webhookUrl, failureMessage);
         console.warn(JSON.stringify({
             game: source.game,
             status: 'source_processing_failed',
-            message: error.message
+            message: failureMessage
         }));
     }
 
@@ -302,13 +328,39 @@ async function fetchSourceText(source) {
     const urls = [source.url].concat(source.supplementalUrls || []);
     const responses = await Promise.all(urls.map(async function(url) {
         try {
-            return await fetchText(url, getSourceFetchOptions(source));
+            return {
+                text: await fetchText(url, getSourceFetchOptions(source)),
+                error: null
+            };
         } catch (error) {
-            return '';
+            return {
+                text: '',
+                error: error
+            };
         }
     }));
+    const responseText = responses.map(function(response) {
+        return response.text;
+    }).filter(Boolean).join('\n');
 
-    return responses.filter(Boolean).join('\n');
+    if (responseText) {
+        return responseText;
+    }
+
+    const failures = responses.map(function(response) {
+        return response.error && response.error.message;
+    }).filter(Boolean);
+
+    if (failures.length > 0) {
+        throw new Error(`source fetch failed (${source.game}): ${failures.join(' | ')}`);
+    }
+
+    return '';
+}
+
+function getSourceFailureMessage(error) {
+    const message = error && error.message ? String(error.message) : 'unexpected source processing failure';
+    return message.slice(0, 500);
 }
 
 function getSourceFetchOptions(source, options = {}) {
@@ -1945,10 +1997,7 @@ async function fetchText(url, options = {}) {
 
     for (let retryCount = 0; retryCount < attempts; retryCount++) {
         try {
-            const requestUrl = options.forceFreshFetch === true
-                ? buildFreshRequestUrl(url, retryCount)
-                : url;
-            const response = await fetchWithTimeout(requestUrl, {
+            const response = await fetchWithTimeout(url, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 discord-patchnote-bot',
                     'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.5,en;q=0.3',
@@ -1956,15 +2005,15 @@ async function fetchText(url, options = {}) {
                     'Cache-Control': 'no-cache',
                     'Pragma': 'no-cache'
                 },
-                cache: options.forceFreshFetch === true ? 'no-store' : undefined,
-                cf: options.forceFreshFetch === true ? {
-                    cacheEverything: false,
-                    cacheTtl: 0
-                } : undefined
+                cache: options.forceFreshFetch === true ? 'no-store' : undefined
             }, timeoutMilliseconds);
 
             if (response.ok) {
                 return await response.text();
+            }
+
+            if (response.body && typeof response.body.cancel === 'function') {
+                await response.body.cancel().catch(function() {});
             }
 
             if (retryCount < attempts - 1) {
@@ -1990,11 +2039,6 @@ async function fetchText(url, options = {}) {
     return '';
 }
 
-function buildFreshRequestUrl(url, retryCount) {
-    const requestUrl = new URL(url);
-    requestUrl.searchParams.set('_patchnote_check', `${Date.now()}-${retryCount}`);
-    return requestUrl.toString();
-}
 
 async function fetchWithTimeout(url, options, timeoutMilliseconds) {
     const controller = new AbortController();
@@ -2616,6 +2660,7 @@ export const __testables = {
     getStoredPatchNoteIds,
     isFf14MaintenanceNewsTitle,
     isPostedPatchNote,
+    mapWithConcurrency,
     notifySourceFailure,
     parseGenshinContentListApi,
     parseGenshinOfficialNews,

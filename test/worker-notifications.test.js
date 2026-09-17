@@ -258,15 +258,14 @@ describe('patch note Worker', function() {
             date: latestDateText,
             url: source.url
         })]);
-        expect(requests).toHaveLength(1 + (source.supplementalUrls || []).length);
+        const expectedRequestUrls = [source.url].concat(source.supplementalUrls || []);
+        expect(requests.map(function(request) {
+            return request.url;
+        })).toEqual(expectedRequestUrls);
 
         for (const request of requests) {
-            expect(new URL(request.url).searchParams.has('_patchnote_check')).toBe(true);
             expect(request.options.cache).toBe('no-store');
-            expect(request.options.cf).toEqual({
-                cacheEverything: false,
-                cacheTtl: 0
-            });
+            expect(request.options.cf).toBeUndefined();
         }
     });
 
@@ -297,12 +296,9 @@ describe('patch note Worker', function() {
             url: fixture.expectedNotes[0].url
         })]);
         expect(requests).toHaveLength(1 + (fixture.source.supplementalUrls || []).length);
-        expect(new URL(requests[0].url).searchParams.has('_patchnote_check')).toBe(true);
+        expect(requests[0].url).toBe(fixture.source.url);
         expect(requests[0].options.cache).toBe('no-store');
-        expect(requests[0].options.cf).toEqual({
-            cacheEverything: false,
-            cacheTtl: 0
-        });
+        expect(requests[0].options.cf).toBeUndefined();
     });
 
     it('全通知元の一覧取得でCDNキャッシュを回避する', async function() {
@@ -326,19 +322,17 @@ describe('patch note Worker', function() {
             await __testables.fetchSourceText(source);
         }
 
-        const expectedRequestCount = __testables.SOURCES.reduce(function(count, source) {
-            return count + 1 + (source.supplementalUrls || []).length;
-        }, 0);
+        const expectedRequestUrls = __testables.SOURCES.reduce(function(urls, source) {
+            return urls.concat([source.url], source.supplementalUrls || []);
+        }, []);
 
-        expect(requests).toHaveLength(expectedRequestCount);
+        expect(requests.map(function(request) {
+            return request.url;
+        })).toEqual(expectedRequestUrls);
 
         for (const request of requests) {
-            expect(new URL(request.url).searchParams.has('_patchnote_check')).toBe(true);
             expect(request.options.cache).toBe('no-store');
-            expect(request.options.cf).toEqual({
-                cacheEverything: false,
-                cacheTtl: 0
-            });
+            expect(request.options.cf).toBeUndefined();
         }
     });
 
@@ -587,12 +581,12 @@ describe('patch note Worker', function() {
             expect(firstResults).toContainEqual(expect.objectContaining({
                 game: 'FF14_MAINTENANCE',
                 status: 'error',
-                message: 'failed to fetch source page'
+                message: expect.stringContaining('source fetch failed (FF14_MAINTENANCE):')
             }));
             expect(secondResults).toContainEqual(expect.objectContaining({
                 game: 'FF14_MAINTENANCE',
                 status: 'error',
-                message: 'failed to fetch source page'
+                message: expect.stringContaining('source fetch failed (FF14_MAINTENANCE):')
             }));
             expect(sourceRequestCount).toBe(8);
             expect(alertCount()).toBe(1);
@@ -674,7 +668,7 @@ describe('patch note Worker', function() {
         }
     });
 
-    it('通知元の一覧取得は既定4回、FF14メンテナンスは5回再試行する', function() {
+    it('通知元の一覧取得は接続上限内に収まる再試行回数にする', function() {
         const ff14Maintenance = __testables.SOURCES.find(function(source) {
             return source.game === 'FF14_MAINTENANCE';
         });
@@ -682,8 +676,50 @@ describe('patch note Worker', function() {
             return source.game === 'LoL';
         });
 
-        expect(__testables.getSourceFetchOptions(lol).attempts).toBe(4);
-        expect(__testables.getSourceFetchOptions(ff14Maintenance).attempts).toBe(5);
+        expect(__testables.getSourceFetchOptions(lol).attempts).toBe(2);
+        expect(__testables.getSourceFetchOptions(ff14Maintenance).attempts).toBe(3);
+    });
+
+    it('通知元の確認は同時に2件までに制限して結果順を保持する', async function() {
+        const items = Array.from({ length: 6 }, function(_value, index) {
+            return index;
+        });
+        let activeCount = 0;
+        let maxActiveCount = 0;
+
+        const results = await __testables.mapWithConcurrency(items, 2, async function(item) {
+            activeCount += 1;
+            maxActiveCount = Math.max(maxActiveCount, activeCount);
+            await new Promise(function(resolve) {
+                setTimeout(resolve, 5);
+            });
+            activeCount -= 1;
+            return item * 2;
+        });
+
+        expect(maxActiveCount).toBe(2);
+        expect(results).toEqual(items.map(function(item) {
+            return item * 2;
+        }));
+    });
+
+    it('一覧取得が全て失敗した場合は実際の取得エラーを返す', async function() {
+        const fixtureId = createFixtureDate().getTime();
+        const source = {
+            game: `fixture-${fixtureId}`,
+            url: `https://example.test/source/${fixtureId}`,
+            forceFreshFetch: true,
+            fetchAttempts: 1,
+            fetchRetryWaitMilliseconds: 0
+        };
+
+        vi.stubGlobal('fetch', async function() {
+            return new Response(null, { status: 503 });
+        });
+
+        await expect(__testables.fetchSourceText(source)).rejects.toThrow(
+            `source fetch failed (${source.game}): fetch failed: 503 ${source.url}`
+        );
     });
 
     it('OWは構造化された公式パッチ一覧を解析できる', async function() {
