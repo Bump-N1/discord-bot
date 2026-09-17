@@ -3,6 +3,18 @@
 ゲーム公式サイトの更新情報を確認し、Discordへ通知するCloudflare Worker。
 15分ごとにLoL / TFT / OW / PoE2 / FF14 / 原神の更新を確認し、未投稿の記事だけをWebhookへ投稿する。
 
+## 通知元ごとの監視要件
+
+すべての一覧取得でキャッシュを回避し、取得・解析に失敗した場合は定期的に再試行する。復旧後は障害通知の抑止状態を解除する。
+
+| 通知 | 公式ソース | 検出対象 | 取得上限 |
+| --- | --- | --- | --- |
+| FF14メンテナンス | Lodestone メンテナンス一覧 | ワールド／データセンターのメンテナンス（コンパニオンアプリ等は除外） | 30件 |
+| FF14パッチノート | Lodestone パッチノート一覧 | バージョン付きパッチノート | 10件 |
+| LoL / TFT | 各公式パッチノート一覧 | `game-updates` 配下のバージョン付きパッチ | 各10件 |
+| OW | 日本語・英語の公式パッチノート一覧 | テキストおよび構造化HTMLのパッチ一覧 | 20件 |
+| PoE2 | 公式フォーラム | パッチノート、コンテンツアップデート、ホットフィックス | 30件 |
+| 原神 | 公式コンテンツAPI、公式ニュースページ | 告知／お知らせカテゴリ | 各20件 |
 ## Git連携
 
 Cloudflare WorkersのGit連携では次の設定を使用する。
@@ -36,8 +48,10 @@ npx wrangler secret put DISCORD_WEBHOOK_URL_FF14
 npx wrangler secret put DISCORD_MAINTENANCE_FF14
 npx wrangler secret put DISCORD_WEBHOOK_URL_GENSHIN_NOTICE
 npx wrangler secret put DISCORD_WEBHOOK_URL_GENSHIN_NEWS
+npx wrangler secret put DISCORD_ALERT_WEBHOOK_URL
 ```
 
+`DISCORD_ALERT_WEBHOOK_URL` は、各通知元の取得・解析失敗と、個別Webhookへの送信失敗を集約する監視用Webhook。送信失敗は同じWebhookでは通知できないため、この設定を必須とする。未設定時も取得失敗は該当通知先へ一度だけ警告するが、送信失敗はWorkerログにだけ残る。
 `POST_ON_FIRST_RUN=true` は初回取得時にも投稿を許可する場合に設定する。
 `keep_vars: true` により、既にダッシュボードで設定している変数をデプロイ時に保持する。
 

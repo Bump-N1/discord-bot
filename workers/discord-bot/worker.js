@@ -5,7 +5,10 @@ const LOCK_CONFIRM_WAIT_MILLISECONDS = 700;
 const POSTED_HISTORY_LIMIT = 100;
 const FETCH_TIMEOUT_MILLISECONDS = 10000;
 const FETCH_RETRY_WAIT_MILLISECONDS = 1000;
+const SOURCE_FETCH_ATTEMPTS = 4;
+const SOURCE_FAILURE_ALERT_WEBHOOK_ENV_NAME = 'DISCORD_ALERT_WEBHOOK_URL';
 const FF14_MAINTENANCE_ARTICLE_TIMEOUT_MILLISECONDS = 8000;
+const ENRICHMENT_FETCH_TIMEOUT_MILLISECONDS = 8000;
 const DISCORD_POST_TIMEOUT_MILLISECONDS = 10000;
 const GENSHIN_APP_ID = 'a1b1f9d3315447cc';
 const GENSHIN_API_ROOT = 'https://sg-public-api-static.hoyoverse.com/content_v2_user';
@@ -71,30 +74,44 @@ const DISCORD_PRESENTATIONS = {
 const SOURCES = [
     {
         game: 'FF14_MAINTENANCE',
+        displayName: 'FF14メンテナンス情報',
         url: 'https://jp.finalfantasyxiv.com/lodestone/news/category/2',
         forceFreshFetch: true,
         webhookEnvName: 'DISCORD_MAINTENANCE_FF14',
         parser: parseFf14WorldMaintenance,
+        enrichPatchNote: enrichFf14MaintenancePatchNote,
         checkMultiple: true,
+        maxItems: 30,
         postLatestOnFirstRun: true,
-        retryUnconfirmedLatest: true
+        retryUnconfirmedLatest: true,
+        fetchAttempts: 5,
+        fetchRetryWaitMilliseconds: 1000
     },
     {
         game: 'LoL',
+        displayName: 'LoLパッチノート',
         url: 'https://www.leagueoflegends.com/ja-jp/news/tags/patch-notes/',
         forceFreshFetch: true,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_LOL',
-        parser: parseRiotPatchNotes
+        parser: parseRiotPatchNotes,
+        enrichPatchNote: enrichRiotPatchNote,
+        checkMultiple: true,
+        maxItems: 10
     },
     {
         game: 'TFT',
+        displayName: 'TFTパッチノート',
         url: 'https://teamfighttactics.leagueoflegends.com/ja-jp/news/tags/patch-notes/',
         forceFreshFetch: true,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_TFT',
-        parser: parseRiotPatchNotes
+        parser: parseRiotPatchNotes,
+        enrichPatchNote: enrichRiotPatchNote,
+        checkMultiple: true,
+        maxItems: 10
     },
     {
         game: 'OW',
+        displayName: 'OWパッチノート',
         url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/',
         supplementalUrls: [
             'https://overwatch.blizzard.com/en-us/news/patch-notes/'
@@ -102,53 +119,64 @@ const SOURCES = [
         forceFreshFetch: true,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_OW',
         parser: parseOverwatchPatchNotes,
-        dedupeByUrl: false
+        dedupeByUrl: false,
+        checkMultiple: true,
+        maxItems: 20
     },
     {
         game: 'PoE2',
+        displayName: 'PoE2パッチノート',
         url: 'https://jp.pathofexile.com/forum/view-forum/2294',
         forceFreshFetch: true,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_POE2',
-        parser: parsePoe2PatchNotes
+        parser: parsePoe2PatchNotes,
+        checkMultiple: true,
+        maxItems: 30
     },
     {
         game: 'FF14',
+        displayName: 'FF14パッチノート',
         url: 'https://jp.finalfantasyxiv.com/lodestone/special/patchnote_log/',
         forceFreshFetch: true,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_FF14',
-        parser: parseFf14PatchNotes
+        parser: parseFf14PatchNotes,
+        enrichPatchNote: enrichFf14PatchNote,
+        checkMultiple: true,
+        maxItems: 10
     },
     {
         game: 'Genshin_NOTICE',
-        url: buildGenshinContentListApiUrl(396, 10),
+        displayName: '原神告知',
+        url: buildGenshinContentListApiUrl(396, 20),
         forceFreshFetch: true,
         fallbackUrls: [
             'https://genshin.hoyoverse.com/ja/news/396',
             'https://genshin.hoyoverse.com/m/ja/news'
         ],
-        rssFallbackUrl: 'https://genshin-feed.com/feed/rss-ja-info.xml',
         webhookEnvName: 'DISCORD_WEBHOOK_URL_GENSHIN_NOTICE',
         parser: parseGenshinOfficialNews,
+        enrichPatchNote: enrichGenshinPatchNote,
         checkMultiple: true,
         categoryName: '告知',
         categoryId: 396,
-        maxItems: 3
+        maxItems: 20
     },
     {
         game: 'Genshin_NEWS',
-        url: buildGenshinContentListApiUrl(397, 10),
+        displayName: '原神お知らせ',
+        url: buildGenshinContentListApiUrl(397, 20),
         forceFreshFetch: true,
         fallbackUrls: [
             'https://genshin.hoyoverse.com/ja/news/397',
             'https://genshin.hoyoverse.com/m/ja/news'
         ],
-        rssFallbackUrl: 'https://genshin-feed.com/feed/rss-ja-updates.xml',
         webhookEnvName: 'DISCORD_WEBHOOK_URL_GENSHIN_NEWS',
         parser: parseGenshinOfficialNews,
+        enrichPatchNote: enrichGenshinPatchNote,
         checkMultiple: true,
         categoryName: 'お知らせ',
         categoryId: 397,
-        maxItems: 3
+        maxItems: 20
     }
 ];
 
@@ -193,55 +221,81 @@ async function checkPatchNotes(env) {
 }
 
 async function runPatchNoteChecks(env) {
+    const sourceResultGroups = await Promise.all(SOURCES.map(function(source) {
+        return runSourceCheck(env, source);
+    }));
+
+    return sourceResultGroups.flat();
+}
+
+async function runSourceCheck(env, source) {
     const results = [];
+    const webhookUrl = env && source ? env[source.webhookEnvName] : '';
 
-    for (const source of SOURCES) {
-        try {
-            const webhookUrl = env[source.webhookEnvName];
+    if (!webhookUrl) {
+        results.push({
+            game: source.game,
+            status: 'skipped',
+            message: `${source.webhookEnvName} is not set`
+        });
+        return results;
+    }
 
-            if (!webhookUrl) {
-                results.push({
-                    game: source.game,
-                    status: 'skipped',
-                    message: `${source.webhookEnvName} is not set`
-                });
-                continue;
-            }
+    try {
+        const listHtml = await fetchSourceText(source);
 
-            const listHtml = await fetchSourceText(source);
-
-            if (!listHtml) {
-                results.push({
-                    game: source.game,
-                    status: 'error',
-                    message: 'failed to fetch source page'
-                });
-                continue;
-            }
-
-            const parsedPatchNotes = await source.parser(listHtml, source.url, source.game, source);
-            const patchNotes = uniquePatchNotes(Array.isArray(parsedPatchNotes) ? parsedPatchNotes : [parsedPatchNotes].filter(Boolean));
-
-            if (patchNotes.length === 0) {
-                results.push({
-                    game: source.game,
-                    status: 'error',
-                    message: 'latest patch note was not found'
-                });
-                continue;
-            }
-
-            await processPatchNotes(env, source, webhookUrl, patchNotes, results);
-        } catch (error) {
-            results.push({
-                game: source.game,
-                status: 'error',
-                message: error.message
-            });
+        if (!listHtml) {
+            await recordSourceFailure(results, env, source, webhookUrl, 'failed to fetch source page');
+            return results;
         }
+
+        const parsedPatchNotes = await source.parser(listHtml, source.url, source.game, source);
+        const patchNotes = getValidPatchNotes(parsedPatchNotes);
+
+        if (patchNotes.length === 0) {
+            await recordSourceFailure(results, env, source, webhookUrl, 'latest patch note was not found');
+            return results;
+        }
+
+        await clearSourceFailureAlert(env, source);
+
+        const resultStartIndex = results.length;
+        await processPatchNotes(env, source, webhookUrl, patchNotes, results);
+        await updateDeliveryFailureAlert(env, source, webhookUrl, results.slice(resultStartIndex));
+    } catch (error) {
+        await recordSourceFailure(results, env, source, webhookUrl, 'unexpected source processing failure');
+        console.warn(JSON.stringify({
+            game: source.game,
+            status: 'source_processing_failed',
+            message: error.message
+        }));
     }
 
     return results;
+}
+
+function getValidPatchNotes(parsedPatchNotes) {
+    const patchNotes = Array.isArray(parsedPatchNotes)
+        ? parsedPatchNotes
+        : [parsedPatchNotes].filter(Boolean);
+
+    return uniquePatchNotes(patchNotes).filter(function(patchNote) {
+        return patchNote
+            && cleanupText(patchNote.id)
+            && cleanupText(patchNote.title)
+            && cleanupText(patchNote.url);
+    });
+}
+
+async function recordSourceFailure(results, env, source, webhookUrl, message) {
+    const alertStatus = await notifySourceFailure(env, source, webhookUrl, message);
+
+    results.push({
+        game: source.game,
+        status: 'error',
+        message: message,
+        alertStatus: alertStatus
+    });
 }
 
 async function fetchSourceText(source) {
@@ -259,11 +313,133 @@ async function fetchSourceText(source) {
 
 function getSourceFetchOptions(source, options = {}) {
     return {
+        attempts: source && source.fetchAttempts ? source.fetchAttempts : SOURCE_FETCH_ATTEMPTS,
+        retryWaitMilliseconds: source && source.fetchRetryWaitMilliseconds,
         ...options,
         forceFreshFetch: source && source.forceFreshFetch === true
     };
 }
 
+function getSourceFailureAlertKey(source) {
+    return 'source-failure-alert:' + source.game;
+}
+
+function getDeliveryFailureAlertKey(source) {
+    return 'delivery-failure-alert:' + source.game;
+}
+
+function getSourceDisplayName(source) {
+    return source.displayName || `${source.game} 更新情報`;
+}
+
+async function notifySourceFailure(env, source, sourceWebhookUrl, reason) {
+    const webhookUrl = env && (env[SOURCE_FAILURE_ALERT_WEBHOOK_ENV_NAME] || sourceWebhookUrl);
+
+    return sendFailureAlert(
+        env,
+        source,
+        getSourceFailureAlertKey(source),
+        webhookUrl,
+        `⚠️ ${getSourceDisplayName(source)}を取得できません`,
+        '公式サイトから一覧を取得または解析できませんでした。復旧するまで定期的に再試行します。' +
+            '\n発生理由: ' + reason
+    );
+}
+
+async function notifyDeliveryFailure(env, source, reason) {
+    const webhookUrl = env && env[SOURCE_FAILURE_ALERT_WEBHOOK_ENV_NAME];
+
+    return sendFailureAlert(
+        env,
+        source,
+        getDeliveryFailureAlertKey(source),
+        webhookUrl,
+        `⚠️ ${getSourceDisplayName(source)}をDiscordへ送信できません`,
+        '更新は検出しましたがDiscordへの送信に失敗しました。次回実行時に再送します。' +
+            '\n発生理由: ' + reason
+    );
+}
+
+async function sendFailureAlert(env, source, alertKey, webhookUrl, title, description) {
+    if (!env || !source || !env.PATCHNOTE_KV) {
+        return 'disabled';
+    }
+
+    try {
+        if (await env.PATCHNOTE_KV.get(alertKey)) {
+            return 'already_notified';
+        }
+
+        if (!webhookUrl) {
+            return 'alert_webhook_not_configured';
+        }
+
+        await postToDiscord(webhookUrl, source.game, {
+            id: alertKey,
+            title: title,
+            description: description,
+            date: '',
+            url: source.url,
+            imageUrl: ''
+        });
+
+        await env.PATCHNOTE_KV.put(alertKey, JSON.stringify({
+            alertedAt: new Date().toISOString()
+        }));
+        return 'sent';
+    } catch (error) {
+        console.warn(JSON.stringify({
+            game: source.game,
+            status: 'failure_alert_failed',
+            message: error.message
+        }));
+        return 'failed';
+    }
+}
+
+async function clearSourceFailureAlert(env, source) {
+    await clearFailureAlert(env, source, getSourceFailureAlertKey(source), 'source_failure_alert_reset_failed');
+}
+
+async function clearDeliveryFailureAlert(env, source) {
+    await clearFailureAlert(env, source, getDeliveryFailureAlertKey(source), 'delivery_failure_alert_reset_failed');
+}
+
+async function clearFailureAlert(env, source, alertKey, failureStatus) {
+    if (!env || !source || !env.PATCHNOTE_KV) {
+        return;
+    }
+
+    try {
+        await env.PATCHNOTE_KV.delete(alertKey);
+    } catch (error) {
+        console.warn(JSON.stringify({
+            game: source.game,
+            status: failureStatus,
+            message: error.message
+        }));
+    }
+}
+
+async function updateDeliveryFailureAlert(env, source, webhookUrl, results) {
+    const failedResult = results.find(function(result) {
+        return result.status === 'post_failed_retry_pending';
+    });
+
+    if (failedResult) {
+        const alertStatus = await notifyDeliveryFailure(env, source, failedResult.message);
+        failedResult.alertStatus = alertStatus;
+        return;
+    }
+
+    const postedResult = results.find(function(result) {
+        return result.status === 'posted';
+    });
+
+    if (postedResult) {
+        await clearDeliveryFailureAlert(env, source);
+    }
+}
 async function acquireExecutionLock(env) {
     const token = createLockToken();
     const now = Date.now();
@@ -333,6 +509,142 @@ async function getJsonValue(env, key) {
     }
 }
 
+async function enrichPatchNoteForPosting(source, patchNote) {
+    if (!source || typeof source.enrichPatchNote !== 'function') {
+        return patchNote;
+    }
+
+    try {
+        const enrichedPatchNote = await source.enrichPatchNote({ ...patchNote }, source);
+
+        if (!enrichedPatchNote || typeof enrichedPatchNote !== 'object') {
+            return patchNote;
+        }
+
+        return {
+            ...patchNote,
+            ...enrichedPatchNote,
+            id: patchNote.id,
+            url: patchNote.url,
+            title: cleanupText(enrichedPatchNote.title) || patchNote.title
+        };
+    } catch (error) {
+        console.warn(JSON.stringify({
+            game: source.game,
+            status: 'patch_note_enrichment_failed',
+            message: error.message
+        }));
+        return patchNote;
+    }
+}
+
+async function enrichRiotPatchNote(patchNote, source) {
+    const articleHtml = await fetchText(patchNote.url, getSourceFetchOptions(source, {
+        attempts: 1,
+        timeoutMilliseconds: ENRICHMENT_FETCH_TIMEOUT_MILLISECONDS
+    }));
+
+    if (!articleHtml) {
+        return patchNote;
+    }
+
+    const articleText = htmlToText(articleHtml);
+    const title = findFirstMatch(articleText, getRiotTitlePatterns(source.game))
+        || getJapaneseFallbackTitle(patchNote.title)
+        || extractMetaContent(articleHtml, 'property', 'og:title')
+        || extractMetaContent(articleHtml, 'name', 'twitter:title')
+        || patchNote.title;
+    const metaDescription = extractMetaContent(articleHtml, 'property', 'og:description')
+        || extractMetaContent(articleHtml, 'name', 'description')
+        || '';
+    const description = containsJapaneseText(metaDescription)
+        ? metaDescription
+        : extractRiotJapaneseDescription(articleHtml);
+    const publishedTime = extractMetaContent(articleHtml, 'property', 'article:published_time')
+        || extractMetaContent(articleHtml, 'name', 'article:published_time')
+        || '';
+    const imageUrl = extractRiotPatchHighlightImage(articleHtml, patchNote.url)
+        || extractMetaContent(articleHtml, 'property', 'og:image')
+        || extractMetaContent(articleHtml, 'name', 'twitter:image')
+        || '';
+
+    return {
+        ...patchNote,
+        title: cleanupText(title),
+        description: cleanupText(description),
+        date: formatDateText(publishedTime),
+        imageUrl: imageUrl ? normalizeUrl(imageUrl, patchNote.url) : ''
+    };
+}
+
+async function enrichFf14PatchNote(patchNote, source) {
+    const articleHtml = await fetchText(patchNote.url, getSourceFetchOptions(source, {
+        attempts: 1,
+        timeoutMilliseconds: ENRICHMENT_FETCH_TIMEOUT_MILLISECONDS
+    }));
+
+    if (!articleHtml) {
+        return patchNote;
+    }
+
+    const title = extractMetaContent(articleHtml, 'property', 'og:title')
+        || extractMetaContent(articleHtml, 'name', 'twitter:title')
+        || patchNote.title;
+    const description = extractMetaContent(articleHtml, 'property', 'og:description')
+        || extractMetaContent(articleHtml, 'name', 'description')
+        || '';
+    const imageUrl = extractMetaContent(articleHtml, 'property', 'og:image')
+        || extractMetaContent(articleHtml, 'name', 'twitter:image')
+        || extractFirstImage(articleHtml, patchNote.url)
+        || '';
+
+    return {
+        ...patchNote,
+        title: cleanupText(title),
+        description: cleanupText(description),
+        imageUrl: imageUrl ? normalizeUrl(imageUrl, patchNote.url) : ''
+    };
+}
+
+async function enrichFf14MaintenancePatchNote(patchNote, source) {
+    const articleHtml = await fetchText(patchNote.url, getSourceFetchOptions(source, {
+        attempts: 1,
+        timeoutMilliseconds: FF14_MAINTENANCE_ARTICLE_TIMEOUT_MILLISECONDS
+    }));
+
+    if (!articleHtml) {
+        return patchNote;
+    }
+
+    const articleText = htmlToText(articleHtml);
+    const title = extractMetaContent(articleHtml, 'property', 'og:title')
+        || extractMetaContent(articleHtml, 'name', 'twitter:title')
+        || patchNote.title;
+    const description = extractFf14MaintenanceDescription(articleText)
+        || extractMetaContent(articleHtml, 'property', 'og:description')
+        || extractMetaContent(articleHtml, 'name', 'description')
+        || '';
+
+    return {
+        ...patchNote,
+        title: cleanupLodestoneNewsTitle(title),
+        description: cleanupText(description)
+    };
+}
+
+async function enrichGenshinPatchNote(patchNote, source) {
+    const imageUrl = await extractGenshinArticleImageUrl(
+        patchNote.url,
+        patchNote.id,
+        patchNote.imageUrl,
+        source
+    );
+
+    return imageUrl ? {
+        ...patchNote,
+        imageUrl: imageUrl
+    } : patchNote;
+}
 async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
     const postedKey = `posted:${source.game}`;
     const latestKey = `latest:${source.game}`;
@@ -375,7 +687,7 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
     }
 
     if (postedIds.length === 0 && env.POST_ON_FIRST_RUN !== 'true' && source.postLatestOnFirstRun === true) {
-        const patchNote = validPatchNotes[0];
+        const patchNote = await enrichPatchNoteForPosting(source, validPatchNotes[0]);
 
         try {
             await postToDiscord(webhookUrl, source.game, patchNote);
@@ -414,15 +726,17 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
 
         if (isPostedPatchNote(postedIdSet, latestPatchNote)
             && !isPostedPatchNote(deliveredIdSet, latestPatchNote)) {
+            const enrichedLatestPatchNote = await enrichPatchNoteForPosting(source, latestPatchNote);
+
             try {
-                await postToDiscord(webhookUrl, source.game, latestPatchNote);
+                await postToDiscord(webhookUrl, source.game, enrichedLatestPatchNote);
             } catch (error) {
                 results.push({
                     game: source.game,
                     status: 'post_failed_retry_pending',
-                    title: latestPatchNote.title,
-                    url: latestPatchNote.url,
-                    imageUrl: latestPatchNote.imageUrl || '',
+                    title: enrichedLatestPatchNote.title,
+                    url: enrichedLatestPatchNote.url,
+                    imageUrl: enrichedLatestPatchNote.imageUrl || '',
                     message: error.message
                 });
                 return;
@@ -430,21 +744,20 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
 
             await savePostedIds(env, deliveredKey, mergePostedIds(
                 deliveredIds,
-                getStoredPatchNoteIds(latestPatchNote)
+                getStoredPatchNoteIds(enrichedLatestPatchNote)
             ));
-            await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(latestPatchNote));
+            await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(enrichedLatestPatchNote));
 
             results.push({
                 game: source.game,
                 status: 'posted',
-                title: latestPatchNote.title,
-                url: latestPatchNote.url,
-                imageUrl: latestPatchNote.imageUrl || ''
+                title: enrichedLatestPatchNote.title,
+                url: enrichedLatestPatchNote.url,
+                imageUrl: enrichedLatestPatchNote.imageUrl || ''
             });
             return;
         }
-    }
-    const unpostedPatchNotes = validPatchNotes.filter(function(patchNote) {
+    }    const unpostedPatchNotes = validPatchNotes.filter(function(patchNote) {
         return !isPostedPatchNote(postedIdSet, patchNote);
     });
 
@@ -464,20 +777,22 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
         ? unpostedPatchNotes.slice().reverse()
         : [unpostedPatchNotes[0]];
 
-    for (const patchNote of postingPatchNotes) {
+    for (const sourcePatchNote of postingPatchNotes) {
         const latestPostedIds = await getPostedIds(env, postedKey);
         const latestPostedIdSet = new Set(latestPostedIds);
 
-        if (isPostedPatchNote(latestPostedIdSet, patchNote)) {
+        if (isPostedPatchNote(latestPostedIdSet, sourcePatchNote)) {
             results.push({
                 game: source.game,
                 status: 'skipped_duplicate',
-                title: patchNote.title,
-                url: patchNote.url,
-                imageUrl: patchNote.imageUrl || ''
+                title: sourcePatchNote.title,
+                url: sourcePatchNote.url,
+                imageUrl: sourcePatchNote.imageUrl || ''
             });
             continue;
         }
+
+        const patchNote = await enrichPatchNoteForPosting(source, sourcePatchNote);
 
         try {
             await postToDiscord(webhookUrl, source.game, patchNote);
@@ -649,6 +964,7 @@ function normalizeComparableUrl(url) {
 
 async function parseRiotPatchNotes(listHtml, baseUrl, game, source) {
     const links = extractLinks(listHtml, baseUrl);
+    const maxItems = source && source.maxItems ? source.maxItems : 1;
     const patchLinks = links
         .map(function(link) {
             const version = extractRiotVersion(link.url, link.label, game);
@@ -660,11 +976,7 @@ async function parseRiotPatchNotes(listHtml, baseUrl, game, source) {
             };
         })
         .filter(function(link) {
-            if (!link.version) {
-                return false;
-            }
-
-            if (!link.url.includes('/news/game-updates/')) {
+            if (!link.version || !link.url.includes('/news/game-updates/')) {
                 return false;
             }
 
@@ -673,84 +985,40 @@ async function parseRiotPatchNotes(listHtml, baseUrl, game, source) {
             }
 
             return /patch-\d+-\d+/i.test(link.url);
-        });
+        })
+        .sort(function(a, b) {
+            return compareDottedVersionDesc(a.version, b.version);
+        })
+        .slice(0, maxItems);
 
     if (patchLinks.length === 0) {
         return null;
     }
 
-    patchLinks.sort(function(a, b) {
-        return compareDottedVersionDesc(a.version, b.version);
-    });
-
-    const latestLink = patchLinks[0];
-    const articleHtml = await fetchText(latestLink.url, getSourceFetchOptions(source));
-
-    if (!articleHtml) {
+    return patchLinks.map(function(patchLink) {
         return {
-            id: latestLink.url,
-            title: `${game} パッチノート更新`,
+            id: patchLink.url,
+            title: getRiotListTitle(patchLink.label, game) || `${game} パッチノート更新`,
             description: '',
             date: '',
-            url: latestLink.url,
+            url: patchLink.url,
             imageUrl: ''
         };
-    }
-
-    const articleText = htmlToText(articleHtml);
-    const title = findFirstMatch(articleText, getRiotTitlePatterns(game))
-        || getJapaneseFallbackTitle(latestLink.label)
-        || extractMetaContent(articleHtml, 'property', 'og:title')
-        || extractMetaContent(articleHtml, 'name', 'twitter:title')
-        || `${game} パッチノート更新`;
-
-    const metaDescription = extractMetaContent(articleHtml, 'property', 'og:description')
-        || extractMetaContent(articleHtml, 'name', 'description')
-        || '';
-    const description = containsJapaneseText(metaDescription)
-        ? metaDescription
-        : extractRiotJapaneseDescription(articleHtml);
-
-    const publishedTime = extractMetaContent(articleHtml, 'property', 'article:published_time')
-        || extractMetaContent(articleHtml, 'name', 'article:published_time')
-        || '';
-
-    const imageUrl = extractRiotPatchHighlightImage(articleHtml, latestLink.url)
-        || extractMetaContent(articleHtml, 'property', 'og:image')
-        || extractMetaContent(articleHtml, 'name', 'twitter:image')
-        || '';
-
-    return {
-        id: latestLink.url,
-        title: cleanupText(title),
-        description: cleanupText(description),
-        date: formatDateText(publishedTime),
-        url: latestLink.url,
-        imageUrl: imageUrl ? normalizeUrl(imageUrl, latestLink.url) : ''
-    };
+    });
 }
-
-async function parseOverwatchPatchNotes(html, baseUrl) {
+async function parseOverwatchPatchNotes(html, baseUrl, _game, source) {
     const text = htmlToText(html);
+    const maxItems = source && source.maxItems ? source.maxItems : 1;
     const japaneseCandidates = extractOverwatchTextCandidates(text, [
         /\[(?:オーバーウォッチ 2|オーバーウォッチ)\][^。]{0,220}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
         /(?:オーバーウォッチ 2|オーバーウォッチ)[^。]{0,80}?20\d{2}年\d{1,2}月\d{1,2}日[^。]{0,180}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
         /20\d{2}年\d{1,2}月\d{1,2}日[^。]{0,180}?(?:配信パッチ内容|パッチ内容|パッチノート|アップデート)(?:のお知らせ|のおしらせ)?/g
     ]);
-
-    const englishCandidates = [...text.matchAll(/Overwatch(?: 2)? Retail Patch Notes\s*[-–—:]\s*([A-Z][a-z]+ \d{1,2}, 20\d{2})/g)].map(function(match) {
-        const dateText = cleanupText(match[1]);
-        const dateValue = convertOverwatchDateToNumber(dateText);
-        const displayDate = formatOverwatchJapaneseDate(dateValue);
-
-        return {
-            title: `[オーバーウォッチ] ${displayDate}配信パッチ内容`,
-            date: displayDate,
-            dateValue: dateValue
-        };
-    });
-
-    const candidates = uniqueOverwatchCandidates(japaneseCandidates.concat(englishCandidates)).filter(function(candidate) {
+    const candidates = uniqueOverwatchCandidates(
+        japaneseCandidates
+            .concat(extractOverwatchEnglishCandidates(text))
+            .concat(extractOverwatchStructuredCandidates(html))
+    ).filter(function(candidate) {
         return candidate.dateValue > 0;
     });
 
@@ -758,22 +1026,101 @@ async function parseOverwatchPatchNotes(html, baseUrl) {
         return null;
     }
 
-    candidates.sort(function(a, b) {
-        return b.dateValue - a.dateValue;
-    });
+    return candidates
+        .sort(function(a, b) {
+            return b.dateValue - a.dateValue;
+        })
+        .slice(0, maxItems)
+        .map(function(candidate) {
+            const title = candidate.title || 'オーバーウォッチ パッチノート更新';
 
-    const latest = candidates[0];
-
-    return {
-        id: `${latest.date}:${latest.title}`,
-        title: latest.title || 'オーバーウォッチ パッチノート更新',
-        description: '',
-        date: latest.date || '',
-        url: baseUrl,
-        imageUrl: ''
-    };
+            return {
+                id: `${candidate.date}:${title}`,
+                title: title,
+                description: '',
+                date: candidate.date || '',
+                url: baseUrl,
+                imageUrl: ''
+            };
+        });
 }
 
+function extractOverwatchEnglishCandidates(text) {
+    const candidates = [];
+    const patterns = [
+        /Overwatch(?: 2)?(?: Retail)? Patch Notes\s*[-–—:]\s*([A-Z][a-z]+\.? \d{1,2}, 20\d{2})/g,
+        /Overwatch(?: 2)?(?: Retail)? Patch Notes\s*[-–—:]\s*(20\d{2}[/-]\d{1,2}[/-]\d{1,2})/g
+    ];
+
+    for (const pattern of patterns) {
+        for (const match of String(text || '').matchAll(pattern)) {
+            const dateText = cleanupText(match[1]);
+            const dateValue = convertOverwatchDateToNumber(dateText);
+
+            if (!dateValue) {
+                continue;
+            }
+
+            candidates.push({
+                title: `[オーバーウォッチ] ${formatOverwatchJapaneseDate(dateValue)}配信パッチ内容`,
+                date: formatOverwatchJapaneseDate(dateValue),
+                dateValue: dateValue
+            });
+        }
+    }
+
+    return candidates;
+}
+
+function extractOverwatchStructuredCandidates(html) {
+    const candidates = [];
+    const patchBlockPattern = /<div\b[^>]*class=["'][^"']*\bPatchNotes-patch(?:\s|["'])[^>]*>[\s\S]*?(?=<div\b[^>]*class=["'][^"']*\bPatchNotes-patch(?:\s|["'])|<div\b[^>]*class=["'][^"']*\bPatchNotesPagination(?:\s|["'])|<\/main>|$)/gi;
+
+    for (const match of String(html || '').matchAll(patchBlockPattern)) {
+        const block = match[0];
+        const title = extractOverwatchClassText(block, 'PatchNotes-patchTitle');
+
+        if (!title) {
+            continue;
+        }
+
+        const dateText = extractOverwatchClassText(block, 'PatchNotes-date')
+            || extractOverwatchPatchAnchorDate(block);
+        const dateValue = convertOverwatchDateToNumber(dateText);
+
+        if (!dateValue) {
+            continue;
+        }
+
+        candidates.push({
+            title: title,
+            date: formatOverwatchJapaneseDate(dateValue),
+            dateValue: dateValue
+        });
+    }
+
+    return candidates;
+}
+
+function extractOverwatchClassText(html, className) {
+    const pattern = new RegExp(
+        `<([a-z][a-z0-9]*)\\b[^>]*class=["'][^"']*\\b${escapeRegex(className)}\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/\\1>`,
+        'i'
+    );
+    const match = String(html || '').match(pattern);
+
+    return match && match[2] ? cleanupText(htmlToText(match[2])) : '';
+}
+
+function extractOverwatchPatchAnchorDate(html) {
+    const match = String(html || '').match(/id=["']patch-(20\d{2})-(\d{2})-(\d{2})["']/i);
+
+    if (!match) {
+        return '';
+    }
+
+    return `${match[1]}-${match[2]}-${match[3]}`;
+}
 function extractOverwatchTextCandidates(text, patterns) {
     const candidates = [];
 
@@ -869,8 +1216,9 @@ function formatOverwatchJapaneseDate(dateValue) {
     return `${year}年${month}月${day}日`;
 }
 
-async function parsePoe2PatchNotes(html, baseUrl) {
+async function parsePoe2PatchNotes(html, baseUrl, _game, source) {
     const links = extractLinks(html, baseUrl);
+    const maxItems = source && source.maxItems ? source.maxItems : 1;
     const patchLinks = links
         .map(function(link) {
             const title = cleanupText(link.label);
@@ -888,28 +1236,29 @@ async function parsePoe2PatchNotes(html, baseUrl) {
                 && (
                     link.title.includes('パッチノート')
                     || link.title.includes('コンテンツアップデート')
+                    || /ホットフィックス|hotfix/i.test(link.title)
                 );
-        });
+        })
+        .slice(0, maxItems);
 
     if (patchLinks.length === 0) {
         return null;
     }
 
-    // The forum lists new posts first; version order can differ for hotfixes.
-    const latest = patchLinks[0];
-
-    return {
-        id: latest.url,
-        title: latest.title || 'Path of Exile 2 パッチノート更新',
-        description: '',
-        date: '',
-        url: latest.url,
-        imageUrl: ''
-    };
+    return patchLinks.map(function(link) {
+        return {
+            id: link.url,
+            title: link.title || 'Path of Exile 2 パッチノート更新',
+            description: '',
+            date: '',
+            url: link.url,
+            imageUrl: ''
+        };
+    });
 }
-
 async function parseFf14PatchNotes(html, baseUrl, _game, source) {
     const links = extractLinks(html, baseUrl);
+    const maxItems = source && source.maxItems ? source.maxItems : 1;
     const patchLinks = links
         .map(function(link) {
             const title = cleanupText(link.label);
@@ -925,55 +1274,29 @@ async function parseFf14PatchNotes(html, baseUrl, _game, source) {
             return !!link.version
                 && link.title.includes('パッチノート')
                 && !link.title.includes('パッチノート＆パッチ特設サイト一覧');
-        });
+        })
+        .sort(function(a, b) {
+            return b.version - a.version;
+        })
+        .slice(0, maxItems);
 
     if (patchLinks.length === 0) {
         return null;
     }
 
-    patchLinks.sort(function(a, b) {
-        return b.version - a.version;
-    });
-
-    const latest = patchLinks[0];
-    const articleHtml = await fetchText(latest.url, getSourceFetchOptions(source));
-
-    if (!articleHtml) {
+    return patchLinks.map(function(patchLink) {
         return {
-            id: latest.url,
-            title: latest.title || 'FF14 パッチノート更新',
+            id: patchLink.url,
+            title: patchLink.title || 'FF14 パッチノート更新',
             description: '',
             date: '',
-            url: latest.url,
+            url: patchLink.url,
             imageUrl: ''
         };
-    }
-
-    const title = extractMetaContent(articleHtml, 'property', 'og:title')
-        || extractMetaContent(articleHtml, 'name', 'twitter:title')
-        || latest.title
-        || 'FF14 パッチノート更新';
-
-    const description = extractMetaContent(articleHtml, 'property', 'og:description')
-        || extractMetaContent(articleHtml, 'name', 'description')
-        || '';
-
-    const imageUrl = extractMetaContent(articleHtml, 'property', 'og:image')
-        || extractMetaContent(articleHtml, 'name', 'twitter:image')
-        || extractFirstImage(articleHtml, latest.url)
-        || '';
-
-    return {
-        id: latest.url,
-        title: cleanupText(title),
-        description: cleanupText(description),
-        date: '',
-        url: latest.url,
-        imageUrl: imageUrl ? normalizeUrl(imageUrl, latest.url) : ''
-    };
+    });
 }
-
 async function parseFf14WorldMaintenance(html, baseUrl, _game, source) {
+    const maxItems = source && source.maxItems ? source.maxItems : 10;
     const links = extractLinks(html, baseUrl);
     const maintenanceLinks = links
         .map(function(link) {
@@ -988,59 +1311,23 @@ async function parseFf14WorldMaintenance(html, baseUrl, _game, source) {
             return link.url.includes('/lodestone/news/detail/')
                 && isFf14MaintenanceNewsTitle(normalizedTitle);
         })
-        .slice(0, 10);
+        .slice(0, maxItems);
 
     if (maintenanceLinks.length === 0) {
         return null;
     }
 
-    const maintenancePatchNotes = await Promise.all(maintenanceLinks.map(async function(maintenanceLink) {
-        let articleHtml = '';
-
-        try {
-            articleHtml = await fetchText(maintenanceLink.url, getSourceFetchOptions(source, {
-                attempts: 1,
-                timeoutMilliseconds: FF14_MAINTENANCE_ARTICLE_TIMEOUT_MILLISECONDS
-            }));
-        } catch (error) {
-            articleHtml = '';
-        }
-
-        if (!articleHtml) {
-            return {
-                id: maintenanceLink.url,
-                title: maintenanceLink.title || 'FF14 メンテナンス情報更新',
-                description: '',
-                date: '',
-                url: maintenanceLink.url,
-                imageUrl: ''
-            };
-        }
-
-        const articleText = htmlToText(articleHtml);
-        const title = extractMetaContent(articleHtml, 'property', 'og:title')
-            || extractMetaContent(articleHtml, 'name', 'twitter:title')
-            || maintenanceLink.title
-            || 'FF14 メンテナンス情報更新';
-
-        const description = extractFf14MaintenanceDescription(articleText)
-            || extractMetaContent(articleHtml, 'property', 'og:description')
-            || extractMetaContent(articleHtml, 'name', 'description')
-            || '';
-
+    return maintenanceLinks.map(function(maintenanceLink) {
         return {
             id: maintenanceLink.url,
-            title: cleanupLodestoneNewsTitle(title),
-            description: cleanupText(description),
+            title: maintenanceLink.title || 'FF14 メンテナンス情報更新',
+            description: '',
             date: '',
             url: maintenanceLink.url,
             imageUrl: ''
         };
-    }));
-
-    return maintenancePatchNotes;
+    });
 }
-
 async function parseGenshinOfficialNews(text, baseUrl, game, source) {
     const maxItems = source && source.maxItems ? source.maxItems : 3;
     let patchNotes = parseGenshinContentListApi(text, source);
@@ -1058,29 +1345,10 @@ async function parseGenshinOfficialNews(text, baseUrl, game, source) {
         }
     }
 
-    if (patchNotes.length === 0 && source && source.rssFallbackUrl) {
-        try {
-            const rssText = await fetchText(source.rssFallbackUrl, getSourceFetchOptions(source));
-            patchNotes = await parseGenshinRssFeed(rssText, source.rssFallbackUrl, game, source);
-        } catch (error) { }
-    }
 
     const latestNotes = uniquePatchNotes(patchNotes)
         .sort(compareGenshinPatchNoteDesc)
         .slice(0, maxItems);
-
-    for (const patchNote of latestNotes) {
-        const articleImageUrl = await extractGenshinArticleImageUrl(
-            patchNote.url,
-            patchNote.id,
-            patchNote.imageUrl,
-            source
-        );
-
-        if (articleImageUrl) {
-            patchNote.imageUrl = articleImageUrl;
-        }
-    }
 
     return latestNotes;
 }
@@ -1197,6 +1465,35 @@ function extractGenshinDateFromContext(context) {
     ]);
 }
 
+function compareGenshinPatchNoteDesc(a, b) {
+    if (a.dateValue !== b.dateValue) {
+        return b.dateValue - a.dateValue;
+    }
+
+    if (a.order !== b.order) {
+        return (a.order || 0) - (b.order || 0);
+    }
+
+    const idA = extractNumericId(a.id || a.url);
+    const idB = extractNumericId(b.id || b.url);
+
+    if (idA && idB && idA !== idB) {
+        return idB - idA;
+    }
+
+    return 0;
+}
+
+function extractNumericId(value) {
+    const match = String(value || '').match(/(\d{5,})/);
+
+    if (!match || !match[1]) {
+        return 0;
+    }
+
+    return Number(match[1]);
+}
+
 async function extractGenshinArticleImageUrl(articleUrl, articleId, fallbackImageUrl, source) {
     const imageCandidates = [];
 
@@ -1213,22 +1510,33 @@ async function extractGenshinArticleImageUrl(articleUrl, articleId, fallbackImag
         try {
             const detailApiText = await fetchText(
                 buildGenshinContentDetailApiUrl(articleId),
-                getSourceFetchOptions(source)
+                getSourceFetchOptions(source, {
+                    attempts: 1,
+                    timeoutMilliseconds: ENRICHMENT_FETCH_TIMEOUT_MILLISECONDS
+                })
             );
             imageCandidates.push.apply(imageCandidates, extractGenshinImageCandidates(detailApiText, articleUrl));
+
+            const detailImageUrl = chooseBestGenshinImageUrl(imageCandidates);
+
+            if (detailImageUrl) {
+                return detailImageUrl;
+            }
         } catch (error) { }
     }
 
     if (articleUrl) {
         try {
-            const articleHtml = await fetchText(articleUrl, getSourceFetchOptions(source));
+            const articleHtml = await fetchText(articleUrl, getSourceFetchOptions(source, {
+                attempts: 1,
+                timeoutMilliseconds: ENRICHMENT_FETCH_TIMEOUT_MILLISECONDS
+            }));
             imageCandidates.push.apply(imageCandidates, extractGenshinImageCandidates(articleHtml, articleUrl));
         } catch (error) { }
     }
 
     return chooseBestGenshinImageUrl(imageCandidates);
 }
-
 function extractBestGenshinImageUrl(html, baseUrl) {
     return chooseBestGenshinImageUrl(extractGenshinImageCandidates(html, baseUrl));
 }
@@ -1531,88 +1839,6 @@ function getGenshinImageScore(imageUrl, index, context, source) {
     return score;
 }
 
-async function parseGenshinRssFeed(xmlText, baseUrl, game, source) {
-    const categoryName = source && source.categoryName ? source.categoryName : '';
-    const maxItems = source && source.maxItems ? source.maxItems : 3;
-    const itemBlocks = extractXmlBlocks(xmlText, 'item');
-    const patchNotes = [];
-
-    for (let i = 0; i < itemBlocks.length; i++) {
-        const itemBlock = itemBlocks[i];
-        const title = extractXmlText(itemBlock, 'title');
-        const link = extractXmlText(itemBlock, 'link') || extractXmlText(itemBlock, 'guid');
-        const descriptionRaw = extractXmlRawText(itemBlock, 'description');
-        const contentRaw = extractXmlRawText(itemBlock, 'content:encoded');
-        const description = cleanupText(htmlToText(descriptionRaw || contentRaw));
-        const pubDate = extractXmlText(itemBlock, 'pubDate')
-            || extractXmlText(itemBlock, 'published')
-            || extractXmlText(itemBlock, 'updated');
-        const category = extractXmlText(itemBlock, 'category') || categoryName;
-        const imageSourceHtml = `${contentRaw}\n${descriptionRaw}`;
-        const imageUrl = extractRssImageUrl(itemBlock, imageSourceHtml, link || baseUrl);
-        const id = extractGenshinNewsId(link) || link;
-
-        if (!id || !title || !link) {
-            continue;
-        }
-
-        patchNotes.push({
-            id: String(id),
-            title: cleanupText(title),
-            description: description,
-            date: formatDateText(pubDate),
-            category: categoryName || category,
-            dateValue: convertGenshinDateToNumber(pubDate),
-            order: i,
-            url: link,
-            imageUrl: imageUrl ? normalizeUrl(imageUrl, link) : ''
-        });
-    }
-
-    return uniquePatchNotes(patchNotes)
-        .sort(compareGenshinPatchNoteDesc)
-        .slice(0, maxItems);
-}
-
-function compareGenshinPatchNoteDesc(a, b) {
-    if (a.dateValue !== b.dateValue) {
-        return b.dateValue - a.dateValue;
-    }
-
-    if (a.order !== b.order) {
-        return (a.order || 0) - (b.order || 0);
-    }
-
-    const idA = extractNumericId(a.id || a.url);
-    const idB = extractNumericId(b.id || b.url);
-
-    if (idA && idB && idA !== idB) {
-        return idB - idA;
-    }
-
-    return 0;
-}
-
-function extractNumericId(value) {
-    const match = String(value || '').match(/(\d{5,})/);
-
-    if (!match || !match[1]) {
-        return 0;
-    }
-
-    return Number(match[1]);
-}
-
-function extractGenshinNewsId(url) {
-    const match = String(url || '').match(/\/news\/detail\/(\d+)/);
-
-    if (!match || !match[1]) {
-        return '';
-    }
-
-    return match[1];
-}
-
 function buildGenshinArticleUrl(articleId, rawUrl) {
     if (articleId) {
         return `${GENSHIN_SITE_ROOT}/ja/news/detail/${articleId}`;
@@ -1632,73 +1858,6 @@ function buildGenshinContentListApiUrl(categoryId, pageSize) {
 function buildGenshinContentDetailApiUrl(articleId) {
     return `${GENSHIN_API_ROOT}/app/${GENSHIN_APP_ID}/getContent?iInfoId=${articleId}&sLangKey=${GENSHIN_LANG_KEY}`;
 }
-
-function extractXmlBlocks(xmlText, tagName) {
-    const blocks = [];
-    const pattern = new RegExp(`<${escapeRegex(tagName)}\\b[^>]*>([\\s\\S]*?)<\\/${escapeRegex(tagName)}>`, 'gi');
-
-    for (const match of String(xmlText || '').matchAll(pattern)) {
-        if (!match || !match[1]) {
-            continue;
-        }
-
-        blocks.push(match[1]);
-    }
-
-    return blocks;
-}
-
-function extractXmlText(xmlText, tagName) {
-    return cleanupText(htmlToText(extractXmlRawText(xmlText, tagName)));
-}
-
-function extractXmlRawText(xmlText, tagName) {
-    const pattern = new RegExp(`<${escapeRegex(tagName)}\\b[^>]*>([\\s\\S]*?)<\\/${escapeRegex(tagName)}>`, 'i');
-    const match = String(xmlText || '').match(pattern);
-
-    if (!match || !match[1]) {
-        return '';
-    }
-
-    return decodeCdata(match[1]);
-}
-
-function decodeCdata(text) {
-    return String(text || '')
-        .replace(/^\s*<!\[CDATA\[/, '')
-        .replace(/\]\]>\s*$/, '');
-}
-
-function extractRssImageUrl(itemBlock, imageSourceHtml, baseUrl) {
-    const mediaUrl = extractAttributeValue(itemBlock, 'media:content', 'url')
-        || extractAttributeValue(itemBlock, 'media:thumbnail', 'url')
-        || extractAttributeValue(itemBlock, 'enclosure', 'url')
-        || '';
-
-    if (mediaUrl) {
-        return normalizeUrl(mediaUrl, baseUrl);
-    }
-
-    const descriptionImageUrl = extractFirstArticleImage(imageSourceHtml || '', baseUrl);
-
-    if (descriptionImageUrl) {
-        return descriptionImageUrl;
-    }
-
-    return '';
-}
-
-function extractAttributeValue(text, tagName, attributeName) {
-    const pattern = new RegExp(`<${escapeRegex(tagName)}\\b[^>]*${escapeRegex(attributeName)}=["']([^"']+)["'][^>]*>`, 'i');
-    const match = String(text || '').match(pattern);
-
-    if (!match || !match[1]) {
-        return '';
-    }
-
-    return decodeHtmlEntities(match[1]);
-}
-
 async function postToDiscord(webhookUrl, game, patchNote) {
     const descriptionLines = [];
     const presentation = getDiscordPresentation(game);
@@ -2076,6 +2235,7 @@ function cleanupLodestoneNewsTitle(text) {
         .replace(/\s*-\s*FINAL FANTASY XIV.*$/i, '')
         .replace(/\s*-\s*The Lodestone.*$/i, '')
         .replace(/\s*document\.getElementById[\s\S]*$/g, '')
+        .replace(/\s*-\s*$/, '')
         .trim();
 }
 
@@ -2167,6 +2327,10 @@ function getRiotTitlePatterns(game) {
     ];
 }
 
+function getRiotListTitle(title, game) {
+    return findFirstMatch(title, getRiotTitlePatterns(game))
+        || getJapaneseFallbackTitle(title);
+}
 function getJapaneseFallbackTitle(title) {
     const cleanedTitle = cleanupText(title);
 
@@ -2444,16 +2608,23 @@ export const __testables = {
     SOURCES,
     applySourceDedupeOptions,
     buildGenshinArticleUrl,
+    clearSourceFailureAlert,
     fetchSourceText,
     getDiscordPresentation,
+    getSourceFetchOptions,
     getPatchNoteKeys,
     getStoredPatchNoteIds,
     isFf14MaintenanceNewsTitle,
     isPostedPatchNote,
+    notifySourceFailure,
     parseGenshinContentListApi,
+    parseGenshinOfficialNews,
+    parseFf14PatchNotes,
     parseFf14WorldMaintenance,
     parseOverwatchPatchNotes,
     parsePoe2PatchNotes,
+    parseRiotPatchNotes,
     processPatchNotes,
+    runPatchNoteChecks,
     uniquePatchNotes
 };
