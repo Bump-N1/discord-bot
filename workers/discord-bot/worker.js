@@ -1,8 +1,22 @@
+import {
+    applySourceDedupeOptions,
+    getPendingPatchNotes,
+    getPatchNoteKeys,
+    getStoredPatchNoteIds,
+    isPostedPatchNote,
+    loadSourceNotificationState,
+    markPatchNoteDelivered,
+    normalizeComparableUrl,
+    planSourceNotifications,
+    saveSourceNotificationState,
+    syncLegacySourceNotificationState,
+    uniquePatchNotes
+} from './notification-state.js';
+
 const LOCK_KEY = 'lock:global';
 const LOCK_TTL_SECONDS = 180;
 const LOCK_TTL_MILLISECONDS = LOCK_TTL_SECONDS * 1000;
 const LOCK_CONFIRM_WAIT_MILLISECONDS = 700;
-const POSTED_HISTORY_LIMIT = 100;
 const FETCH_TIMEOUT_MILLISECONDS = 10000;
 const FETCH_RETRY_WAIT_MILLISECONDS = 1000;
 const SOURCE_FETCH_ATTEMPTS = 2;
@@ -697,14 +711,8 @@ async function enrichGenshinPatchNote(patchNote, source) {
         imageUrl: imageUrl
     } : patchNote;
 }
+
 async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
-    const postedKey = `posted:${source.game}`;
-    const latestKey = `latest:${source.game}`;
-    const deliveredKey = source.retryUnconfirmedLatest === true
-        ? 'delivered:' + source.game
-        : '';
-    const postedIds = await getPostedIds(env, postedKey);
-    const postedIdSet = new Set(postedIds);
     const validPatchNotes = uniquePatchNotes(patchNotes
         .filter(function(patchNote) {
             return patchNote && patchNote.id && patchNote.url;
@@ -722,128 +730,49 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
         return;
     }
 
-    if (postedIds.length === 0 && env.POST_ON_FIRST_RUN !== 'true' && source.postLatestOnFirstRun !== true) {
-        await savePostedIds(env, postedKey, collectStoredIds(validPatchNotes));
-        await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(validPatchNotes[0]));
+    const loadedState = await loadSourceNotificationState(env.PATCHNOTE_KV, source);
+    const plan = planSourceNotifications(source, loadedState.state, validPatchNotes, {
+        postOnFirstRun: env.POST_ON_FIRST_RUN === 'true',
+        allowLatestOnDiscontinuity: loadedState.isCurrentSchema
+    });
+    let state = plan.state;
 
+    if (plan.rebaselined) {
+        console.warn(JSON.stringify({
+            game: source.game,
+            status: 'source_state_rebaselined',
+            notificationMode: loadedState.isCurrentSchema ? 'latest_only' : 'none'
+        }));
+    }
+
+    if (loadedState.needsPersistence || plan.stateChanged) {
+        await saveSourceNotificationState(env.PATCHNOTE_KV, source, state, {
+            syncLegacy: true
+        });
+    }
+
+    const postingPatchNotes = getPendingPatchNotes(state, validPatchNotes);
+
+    if (postingPatchNotes.length === 0) {
         results.push({
             game: source.game,
-            status: 'initialized',
+            status: plan.initialRun
+                ? 'initialized'
+                : (plan.rebaselined ? 'reinitialized' : 'no_update'),
             count: validPatchNotes.length,
             title: validPatchNotes[0].title,
             url: validPatchNotes[0].url,
             imageUrl: validPatchNotes[0].imageUrl || '',
-            message: 'first run. saved current entries without posting'
+            message: plan.initialRun
+                ? 'first run. saved current entries without posting'
+                : (plan.rebaselined ? 'source continuity changed. rebaselined without backlog posting' : '')
         });
         return;
     }
 
-    if (postedIds.length === 0 && env.POST_ON_FIRST_RUN !== 'true' && source.postLatestOnFirstRun === true) {
-        const patchNote = await enrichPatchNoteForPosting(source, validPatchNotes[0]);
-
-        try {
-            await postToDiscord(webhookUrl, source.game, patchNote);
-        } catch (error) {
-            results.push({
-                game: source.game,
-                status: 'post_failed_retry_pending',
-                title: patchNote.title,
-                url: patchNote.url,
-                imageUrl: patchNote.imageUrl || '',
-                message: error.message
-            });
-            return;
-        }
-
-        await savePostedIds(env, postedKey, collectStoredIds(validPatchNotes));
-        if (deliveredKey) {
-            await savePostedIds(env, deliveredKey, getStoredPatchNoteIds(patchNote));
-        }
-        await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(patchNote));
-
-        results.push({
-            game: source.game,
-            status: 'posted',
-            title: patchNote.title,
-            url: patchNote.url,
-            imageUrl: patchNote.imageUrl || ''
-        });
-        return;
-    }
-
-    if (source.retryUnconfirmedLatest === true) {
-        const latestPatchNote = validPatchNotes[0];
-        const deliveredIds = await getPostedIds(env, deliveredKey);
-        const deliveredIdSet = new Set(deliveredIds);
-
-        if (isPostedPatchNote(postedIdSet, latestPatchNote)
-            && !isPostedPatchNote(deliveredIdSet, latestPatchNote)) {
-            const enrichedLatestPatchNote = await enrichPatchNoteForPosting(source, latestPatchNote);
-
-            try {
-                await postToDiscord(webhookUrl, source.game, enrichedLatestPatchNote);
-            } catch (error) {
-                results.push({
-                    game: source.game,
-                    status: 'post_failed_retry_pending',
-                    title: enrichedLatestPatchNote.title,
-                    url: enrichedLatestPatchNote.url,
-                    imageUrl: enrichedLatestPatchNote.imageUrl || '',
-                    message: error.message
-                });
-                return;
-            }
-
-            await savePostedIds(env, deliveredKey, mergePostedIds(
-                deliveredIds,
-                getStoredPatchNoteIds(enrichedLatestPatchNote)
-            ));
-            await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(enrichedLatestPatchNote));
-
-            results.push({
-                game: source.game,
-                status: 'posted',
-                title: enrichedLatestPatchNote.title,
-                url: enrichedLatestPatchNote.url,
-                imageUrl: enrichedLatestPatchNote.imageUrl || ''
-            });
-            return;
-        }
-    }    const unpostedPatchNotes = validPatchNotes.filter(function(patchNote) {
-        return !isPostedPatchNote(postedIdSet, patchNote);
-    });
-
-    if (unpostedPatchNotes.length === 0) {
-        results.push({
-            game: source.game,
-            status: 'no_update',
-            count: validPatchNotes.length,
-            title: validPatchNotes[0].title,
-            url: validPatchNotes[0].url,
-            imageUrl: validPatchNotes[0].imageUrl || ''
-        });
-        return;
-    }
-
-    const postingPatchNotes = source.checkMultiple === true
-        ? unpostedPatchNotes.slice().reverse()
-        : [unpostedPatchNotes[0]];
+    let delivered = false;
 
     for (const sourcePatchNote of postingPatchNotes) {
-        const latestPostedIds = await getPostedIds(env, postedKey);
-        const latestPostedIdSet = new Set(latestPostedIds);
-
-        if (isPostedPatchNote(latestPostedIdSet, sourcePatchNote)) {
-            results.push({
-                game: source.game,
-                status: 'skipped_duplicate',
-                title: sourcePatchNote.title,
-                url: sourcePatchNote.url,
-                imageUrl: sourcePatchNote.imageUrl || ''
-            });
-            continue;
-        }
-
         const patchNote = await enrichPatchNoteForPosting(source, sourcePatchNote);
 
         try {
@@ -860,12 +789,9 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
             continue;
         }
 
-        const newPostedIds = mergePostedIds(latestPostedIds, getStoredPatchNoteIds(patchNote));
-        await savePostedIds(env, postedKey, newPostedIds);
-        if (deliveredKey) {
-            await savePostedIds(env, deliveredKey, getStoredPatchNoteIds(patchNote));
-        }
-        await env.PATCHNOTE_KV.put(latestKey, getStoredPatchNoteId(patchNote));
+        state = markPatchNoteDelivered(state, patchNote);
+        await saveSourceNotificationState(env.PATCHNOTE_KV, source, state);
+        delivered = true;
 
         results.push({
             game: source.game,
@@ -877,141 +803,10 @@ async function processPatchNotes(env, source, webhookUrl, patchNotes, results) {
 
         await sleep(1000);
     }
-}
 
-async function getPostedIds(env, key) {
-    const value = await env.PATCHNOTE_KV.get(key);
-
-    if (!value) {
-        return [];
+    if (delivered) {
+        await syncLegacySourceNotificationState(env.PATCHNOTE_KV, source, state);
     }
-
-    try {
-        const parsedValue = JSON.parse(value);
-
-        if (Array.isArray(parsedValue)) {
-            return parsedValue.filter(function(item) {
-                return typeof item === 'string' && item;
-            });
-        }
-
-        if (typeof parsedValue === 'string' && parsedValue) {
-            return [parsedValue];
-        }
-
-        return [];
-    } catch (error) {
-        return [String(value)];
-    }
-}
-
-async function savePostedIds(env, key, postedIds) {
-    await env.PATCHNOTE_KV.put(key, JSON.stringify(postedIds.slice(-POSTED_HISTORY_LIMIT)));
-}
-
-function applySourceDedupeOptions(source, patchNote) {
-    if (source.dedupeByUrl !== false) {
-        return patchNote;
-    }
-
-    return {
-        ...patchNote,
-        dedupeByUrl: false
-    };
-}
-
-function collectStoredIds(patchNotes) {
-    let storedIds = [];
-
-    for (const patchNote of patchNotes) {
-        storedIds = storedIds.concat(getStoredPatchNoteIds(patchNote));
-    }
-
-    return Array.from(new Set(storedIds)).slice(-POSTED_HISTORY_LIMIT);
-}
-
-function mergePostedIds(postedIds, newIds) {
-    return Array.from(new Set([].concat(postedIds, newIds))).slice(-POSTED_HISTORY_LIMIT);
-}
-
-function isPostedPatchNote(postedIdSet, patchNote) {
-    return getStoredPatchNoteIds(patchNote).some(function(id) {
-        return postedIdSet.has(id);
-    });
-}
-
-function getStoredPatchNoteId(patchNote) {
-    return getStoredPatchNoteIds(patchNote)[0] || '';
-}
-
-function getStoredPatchNoteIds(patchNote) {
-    const ids = [];
-
-    if (patchNote.id) {
-        ids.push(`id:${String(patchNote.id)}`);
-    }
-
-    if (patchNote.url && patchNote.dedupeByUrl !== false) {
-        ids.push(`url:${normalizeComparableUrl(patchNote.url)}`);
-    }
-
-    return ids.filter(Boolean);
-}
-
-function uniquePatchNotes(patchNotes) {
-    const seen = new Set();
-    const unique = [];
-
-    for (const patchNote of patchNotes) {
-        if (!patchNote) {
-            continue;
-        }
-
-        const keys = getPatchNoteKeys(patchNote);
-
-        if (keys.length === 0) {
-            continue;
-        }
-
-        const hasSeenKey = keys.some(function(key) {
-            return seen.has(key);
-        });
-
-        if (hasSeenKey) {
-            continue;
-        }
-
-        for (const key of keys) {
-            seen.add(key);
-        }
-
-        unique.push(patchNote);
-    }
-
-    return unique;
-}
-
-function getPatchNoteKeys(patchNote) {
-    const keys = [];
-
-    if (patchNote.id) {
-        keys.push(`id:${String(patchNote.id)}`);
-    }
-
-    if (patchNote.url && patchNote.dedupeByUrl !== false) {
-        keys.push(`url:${normalizeComparableUrl(patchNote.url)}`);
-    }
-
-    return keys.filter(Boolean);
-}
-
-function normalizeComparableUrl(url) {
-    return String(url || '')
-        .split('#')[0]
-        .replace(/[?&]utm_[^&]+/g, '')
-        .replace(/[?&]utm[^&]+/g, '')
-        .replace(/[?&]$/, '')
-        .trim();
 }
 
 async function parseRiotPatchNotes(listHtml, baseUrl, game, source) {

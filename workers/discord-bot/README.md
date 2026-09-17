@@ -52,8 +52,19 @@ npx wrangler secret put DISCORD_ALERT_WEBHOOK_URL
 ```
 
 `DISCORD_ALERT_WEBHOOK_URL` は、各通知元の取得・解析失敗と、個別Webhookへの送信失敗を集約する監視用Webhook。送信失敗は同じWebhookでは通知できないため、この設定を必須とする。未設定時も取得失敗は該当通知先へ一度だけ警告するが、送信失敗はWorkerログにだけ残る。
-`POST_ON_FIRST_RUN=true` は初回取得時にも投稿を許可する場合に設定する。
+`POST_ON_FIRST_RUN=true` は初回取得時にも最新1件だけ投稿する場合に設定する。過去記事の一括投稿は行わない。
 `keep_vars: true` により、既にダッシュボードで設定している変数をデプロイ時に保持する。
+
+## 通知状態とKV移行
+
+通知元ごとの状態は `source-state:<game>` にスキーマバージョン付きで保存する。
+
+- `observedIds`: 一覧で確認済みの記事。過去記事の遡及投稿を防ぐ。
+- `pendingIds`: 新着として検出したがDiscord送信が完了していない記事。成功するまで再試行する。
+- `deliveredIds`: Discord送信が完了した記事。重複送信を防ぐ。
+- `latestId`: 直近一覧の基準点。
+
+旧 `posted:<game>` / `delivered:<game>` / `latest:<game>` は初回読込時に自動移行する。旧KVが部分的でも、一覧内の不足している過去記事は通知せず基準点へ取り込む。ロールバック互換のため旧キーも併記するが、未送信記事は `posted:<game>` に含めない。
 
 ローカル確認では `.dev.vars.example` を `.dev.vars` として用意する。
 
