@@ -102,22 +102,38 @@ function createOverwatchEnglishPatchHtml(date) {
 
 function createOverwatchStructuredPatchFixture() {
     const source = getSourceForParser(__testables.parseOverwatchPatchNotes);
-    const date = createFixtureDate();
-    const title = `fixture-patch-${date.getTime()}`;
+    const latestPatchDate = createFixtureDate();
+    const previousPatchDate = offsetFixtureDate(latestPatchDate, -7);
+    const patchNotes = [latestPatchDate, previousPatchDate].map(function(patchDate) {
+        const publishedDate = offsetFixtureDate(patchDate, -1);
+        const formattedPatchDate = formatOverwatchFixtureDate(patchDate);
+        const sourceTitle = `[オーバーウォッチ] ${formattedPatchDate}配信パッチ内容のおしらせ`;
+        const title = `[オーバーウォッチ] ${formattedPatchDate}配信パッチ内容`;
+
+        return {
+            title: title,
+            id: `${formattedPatchDate}:${title}`,
+            html: [
+                `<div class="PatchNotes-patch" id="patch-${publishedDate.toISOString().slice(0, 10)}">`,
+                `<div class="PatchNotes-date">${formatOverwatchFixtureDate(publishedDate)}</div>`,
+                `<h3 class="PatchNotes-patchTitle">${sourceTitle}</h3>`,
+                '</div>'
+            ].join('')
+        };
+    });
 
     return {
         source: source,
-        html: [
-            `<div class="PatchNotes-patch" id="patch-${date.toISOString().slice(0, 10)}">`,
-            `<h2 class="PatchNotes-patchTitle">${title}</h2>`,
-            `<span class="PatchNotes-date">${formatOverwatchEnglishFixtureDate(date)}</span>`,
-            '</div>'
-        ].join(''),
-        expectedPatchNote: {
-            title: title,
-            date: formatOverwatchFixtureDate(date),
-            url: source.url
-        }
+        html: patchNotes.map(function(patchNote) {
+            return patchNote.html;
+        }).join(''),
+        expectedPatchNotes: patchNotes.map(function(patchNote) {
+            return {
+                id: patchNote.id,
+                title: patchNote.title,
+                url: source.url
+            };
+        })
     };
 }
 
@@ -218,7 +234,6 @@ describe('patch note Worker', function() {
         expect(result).toEqual([expect.objectContaining({
             id: `${japanesePatch.date}:${japanesePatch.title}`,
             title: japanesePatch.title,
-            date: japanesePatch.date,
             url: source.url
         })]);
     });
@@ -255,7 +270,6 @@ describe('patch note Worker', function() {
         expect(result).toEqual([expect.objectContaining({
             id: `${latestDateText}:${expectedTitle}`,
             title: expectedTitle,
-            date: latestDateText,
             url: source.url
         })]);
         const expectedRequestUrls = [source.url].concat(source.supplementalUrls || []);
@@ -528,6 +542,50 @@ describe('patch note Worker', function() {
         ]);
     });
 
+    it('失敗アラートが存在しない場合はKV削除を省略し、存在時だけ削除する', async function() {
+        const source = __testables.SOURCES.find(function(item) {
+            return item.game === 'FF14_MAINTENANCE';
+        });
+        let alertValue = null;
+        const kv = {
+            get: vi.fn(async function() {
+                return alertValue;
+            }),
+            delete: vi.fn(async function() {
+                alertValue = null;
+            })
+        };
+        const env = { PATCHNOTE_KV: kv };
+
+        await __testables.clearSourceFailureAlert(env, source);
+
+        expect(kv.get).toHaveBeenCalledWith('source-failure-alert:FF14_MAINTENANCE');
+        expect(kv.delete).not.toHaveBeenCalled();
+
+        alertValue = JSON.stringify({ alertedAt: '2026-09-25T00:00:00.000Z' });
+        await __testables.clearSourceFailureAlert(env, source);
+
+        expect(kv.get).toHaveBeenCalledTimes(2);
+        expect(kv.delete).toHaveBeenCalledTimes(1);
+        expect(kv.delete).toHaveBeenCalledWith('source-failure-alert:FF14_MAINTENANCE');
+    });
+
+    it('失敗アラートの存在確認に失敗しても削除を試みる', async function() {
+        const source = __testables.SOURCES.find(function(item) {
+            return item.game === 'FF14_MAINTENANCE';
+        });
+        const kv = {
+            get: vi.fn(async function() {
+                throw new Error('temporary KV read failure');
+            }),
+            delete: vi.fn(async function() {})
+        };
+
+        await __testables.clearSourceFailureAlert({ PATCHNOTE_KV: kv }, source);
+
+        expect(kv.delete).toHaveBeenCalledWith('source-failure-alert:FF14_MAINTENANCE');
+    });
+
     it('FF14メンテナンス取得失敗は一度だけ警告し、復旧後の再発は再通知する', async function() {
         const source = __testables.SOURCES.find(function(item) {
             return item.game === 'FF14_MAINTENANCE';
@@ -722,7 +780,7 @@ describe('patch note Worker', function() {
         );
     });
 
-    it('OWは構造化された公式パッチ一覧を解析できる', async function() {
+    it('OWは掲載日と配信日の異なる公式記事を配信日ごとに一件だけ解析し、掲載日は通知に含めない', async function() {
         const fixture = createOverwatchStructuredPatchFixture();
         const result = await __testables.parseOverwatchPatchNotes(
             fixture.html,
@@ -731,7 +789,12 @@ describe('patch note Worker', function() {
             fixture.source
         );
 
-        expect(result).toEqual([expect.objectContaining(fixture.expectedPatchNote)]);
+        expect(result).toEqual(fixture.expectedPatchNotes.map(function(patchNote) {
+            return expect.objectContaining(patchNote);
+        }));
+        expect(result.every(function(patchNote) {
+            return !Object.hasOwn(patchNote, 'date');
+        })).toBe(true);
     });
 
     it('PoE2は公式フォーラムのホットフィックスも通知対象にする', async function() {

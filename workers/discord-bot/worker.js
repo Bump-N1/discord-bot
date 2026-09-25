@@ -476,6 +476,18 @@ async function clearFailureAlert(env, source, alertKey, failureStatus) {
         return;
     }
 
+    let alertValue;
+
+    try {
+        alertValue = await env.PATCHNOTE_KV.get(alertKey);
+    } catch (error) {
+        // Preserve the best-effort delete if the existence check itself fails.
+    }
+
+    if (alertValue === null) {
+        return;
+    }
+
     try {
         await env.PATCHNOTE_KV.delete(alertKey);
     } catch (error) {
@@ -859,15 +871,13 @@ async function parseOverwatchPatchNotes(html, baseUrl, _game, source) {
     const japaneseCandidates = extractOverwatchTextCandidates(text, [
         /\[(?:オーバーウォッチ 2|オーバーウォッチ)\][^。]{0,220}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
         /(?:オーバーウォッチ 2|オーバーウォッチ)[^。]{0,80}?20\d{2}年\d{1,2}月\d{1,2}日[^。]{0,180}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
-        /20\d{2}年\d{1,2}月\d{1,2}日[^。]{0,180}?(?:配信パッチ内容|パッチ内容|パッチノート|アップデート)(?:のお知らせ|のおしらせ)?/g
+        /20\d{2}年\d{1,2}月\d{1,2}日\s*(?:配信パッチ内容|パッチ内容|パッチノート|アップデート)(?:のお知らせ|のおしらせ)?/g
     ]);
     const candidates = uniqueOverwatchCandidates(
         japaneseCandidates
             .concat(extractOverwatchEnglishCandidates(text))
             .concat(extractOverwatchStructuredCandidates(html))
-    ).filter(function(candidate) {
-        return candidate.dateValue > 0;
-    });
+    );
 
     if (candidates.length === 0) {
         return null;
@@ -880,12 +890,17 @@ async function parseOverwatchPatchNotes(html, baseUrl, _game, source) {
         .slice(0, maxItems)
         .map(function(candidate) {
             const title = candidate.title || 'オーバーウォッチ パッチノート更新';
+            const effectiveDate = candidate.dateValue > 0
+                ? formatOverwatchJapaneseDate(candidate.dateValue)
+                : '';
+            const id = effectiveDate
+                ? `${effectiveDate}:${title}`
+                : `title:${cleanupText(title).toLocaleLowerCase()}`;
 
             return {
-                id: `${candidate.date}:${title}`,
+                id: id,
                 title: title,
                 description: '',
-                date: candidate.date || '',
                 url: baseUrl,
                 imageUrl: ''
             };
@@ -931,17 +946,16 @@ function extractOverwatchStructuredCandidates(html) {
             continue;
         }
 
-        const dateText = extractOverwatchClassText(block, 'PatchNotes-date')
-            || extractOverwatchPatchAnchorDate(block);
+        const dateText = findFirstMatch(title, [
+            /20\d{2}年\d{1,2}月\d{1,2}日/,
+            /[A-Z][a-z]+\.? \d{1,2}, 20\d{2}/,
+            /20\d{2}[/-]\d{1,2}[/-]\d{1,2}/
+        ]);
         const dateValue = convertOverwatchDateToNumber(dateText);
-
-        if (!dateValue) {
-            continue;
-        }
 
         candidates.push({
             title: title,
-            date: formatOverwatchJapaneseDate(dateValue),
+            date: dateValue > 0 ? formatOverwatchJapaneseDate(dateValue) : '',
             dateValue: dateValue
         });
     }
@@ -959,15 +973,6 @@ function extractOverwatchClassText(html, className) {
     return match && match[2] ? cleanupText(htmlToText(match[2])) : '';
 }
 
-function extractOverwatchPatchAnchorDate(html) {
-    const match = String(html || '').match(/id=["']patch-(20\d{2})-(\d{2})-(\d{2})["']/i);
-
-    if (!match) {
-        return '';
-    }
-
-    return `${match[1]}-${match[2]}-${match[3]}`;
-}
 function extractOverwatchTextCandidates(text, patterns) {
     const candidates = [];
 
@@ -980,7 +985,7 @@ function extractOverwatchTextCandidates(text, patterns) {
 
             candidates.push({
                 title: title,
-                date: date,
+                date: date ? formatOverwatchJapaneseDate(convertOverwatchDateToNumber(date)) : '',
                 dateValue: convertOverwatchDateToNumber(date)
             });
         }
@@ -994,7 +999,9 @@ function uniqueOverwatchCandidates(candidates) {
     const unique = [];
 
     for (const candidate of candidates) {
-        const key = `${candidate.date}:${candidate.title}`;
+        const key = candidate.dateValue > 0
+            ? `patch-date:${candidate.dateValue}`
+            : `title:${cleanupText(candidate.title).toLocaleLowerCase()}`;
 
         if (seen.has(key)) {
             continue;
