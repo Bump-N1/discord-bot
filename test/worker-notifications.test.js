@@ -936,24 +936,31 @@ describe('patch note Worker', function() {
         expect(unique).toHaveLength(1);
     });
 
-    it('OW parses structured patch blocks when the heading format changes', async function() {
+    it('OWは英語見出しの日付を採用し、公開日を通知に含めない', async function() {
+        const source = getSourceForParser(__testables.parseOverwatchPatchNotes);
+        const releaseDate = createFixtureDate();
+        const publishedDate = offsetFixtureDate(releaseDate, -1);
+        const formattedReleaseDate = formatOverwatchFixtureDate(releaseDate);
         const html = [
             '<div class="PatchNotes-patch PatchNotes-live">',
-            '<div class="anchor" id="patch-2026-09-10"></div>',
-            '<div class="PatchNotes-labels"><div class="PatchNotes-date">Sept. 10, 2026</div></div>',
-            '<h3 class="PatchNotes-patchTitle">Overwatch Patch Notes &ndash; Sept. 10, 2026</h3>',
+            '<div class="anchor" id="patch-' + publishedDate.toISOString().slice(0, 10) + '"></div>',
+            '<div class="PatchNotes-labels"><div class="PatchNotes-date">' + formatOverwatchEnglishFixtureDate(publishedDate) + '</div></div>',
+            '<h3 class="PatchNotes-patchTitle">Overwatch Patch Notes – ' + formatOverwatchEnglishFixtureDate(releaseDate) + '</h3>',
             '</div>'
         ].join('');
 
         const result = await __testables.parseOverwatchPatchNotes(
             html,
-            'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
+            source.url
         );
 
-        expect(result).toMatchObject({
-            title: 'Overwatch Patch Notes &ndash; Sept. 10, 2026',
-            date: expect.stringContaining('2026'),
-            url: 'https://overwatch.blizzard.com/ja-jp/news/patch-notes/'
-        });
+        expect(result).toEqual([
+            expect.objectContaining({
+                id: formattedReleaseDate + ':[オーバーウォッチ] ' + formattedReleaseDate + '配信パッチ内容',
+                title: '[オーバーウォッチ] ' + formattedReleaseDate + '配信パッチ内容',
+                url: source.url
+            })
+        ]);
+        expect(result[0]).not.toHaveProperty('date');
     });
 });
