@@ -738,6 +738,27 @@ describe('patch note Worker', function() {
         expect(__testables.getSourceFetchOptions(ff14Maintenance).attempts).toBe(3);
     });
 
+    it('PoE2の取得失敗はDiscordへ通知せず、KVの失敗通知状態にも触れない', async () => {
+        const poe2 = __testables.SOURCES.find((source) => source.game === 'PoE2');
+        const kv = {
+            get: vi.fn(),
+            put: vi.fn()
+        };
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+
+        await expect(__testables.notifySourceFailure(
+            { PATCHNOTE_KV: kv },
+            poe2,
+            'https://discord.test/webhook',
+            'fetch failed: 503'
+        )).resolves.toBe('disabled_by_source_config');
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(kv.get).not.toHaveBeenCalled();
+        expect(kv.put).not.toHaveBeenCalled();
+    });
+
     it('通知元の確認は同時に2件までに制限して結果順を保持する', async function() {
         const items = Array.from({ length: 6 }, function(_value, index) {
             return index;

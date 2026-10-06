@@ -143,6 +143,7 @@ const SOURCES = [
         displayName: 'PoE2パッチノート',
         url: 'https://jp.pathofexile.com/forum/view-forum/2294',
         forceFreshFetch: true,
+        sourceFailureAlertsEnabled: false,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_POE2',
         parser: parsePoe2PatchNotes,
         checkMultiple: true,
@@ -398,7 +399,11 @@ function getSourceDisplayName(source) {
     return source.displayName || `${source.game} 更新情報`;
 }
 
-async function notifySourceFailure(env, source, sourceWebhookUrl, reason) {
+const notifySourceFailure = async (env, source, sourceWebhookUrl, reason) => {
+    if (source && source.sourceFailureAlertsEnabled === false) {
+        return 'disabled_by_source_config';
+    }
+
     const webhookUrl = env && (env[SOURCE_FAILURE_ALERT_WEBHOOK_ENV_NAME] || sourceWebhookUrl);
 
     return sendFailureAlert(
@@ -410,7 +415,7 @@ async function notifySourceFailure(env, source, sourceWebhookUrl, reason) {
         '公式サイトから一覧を取得または解析できませんでした。復旧するまで定期的に再試行します。' +
             '\n発生理由: ' + reason
     );
-}
+};
 
 async function notifyDeliveryFailure(env, source, reason) {
     const webhookUrl = env && env[SOURCE_FAILURE_ALERT_WEBHOOK_ENV_NAME];
