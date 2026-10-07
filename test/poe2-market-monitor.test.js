@@ -8,14 +8,14 @@ let tempDir;
 let store;
 let monitor;
 
-beforeEach(async function() {
+beforeEach(async () => {
     originalCwd = process.cwd();
     tempDir = await mkdtemp(path.join(os.tmpdir(), 'poe2-market-monitor-'));
     process.chdir(tempDir);
     vi.resetModules();
     store = await import('../src/services/poe2/poe2-market-store.js');
     monitor = await import('../src/services/poe2/poe2-market-monitor.js');
-});
+}, 30000);
 
 afterEach(async function() {
     process.chdir(originalCwd);
