@@ -738,8 +738,10 @@ describe('patch note Worker', function() {
         expect(__testables.getSourceFetchOptions(ff14Maintenance).attempts).toBe(3);
     });
 
-    it('PoE2の取得失敗はDiscordへ通知せず、KVの失敗通知状態にも触れない', async () => {
-        const poe2 = __testables.SOURCES.find((source) => source.game === 'PoE2');
+    it('PoE2とOWの取得失敗はDiscordへ通知せず、KVの失敗通知状態にも触れない', async () => {
+        const disabledAlertSources = __testables.SOURCES.filter((source) => {
+            return ['PoE2', 'OW'].includes(source.game);
+        });
         const kv = {
             get: vi.fn(),
             put: vi.fn()
@@ -747,12 +749,17 @@ describe('patch note Worker', function() {
         const fetchMock = vi.fn();
         vi.stubGlobal('fetch', fetchMock);
 
-        await expect(__testables.notifySourceFailure(
-            { PATCHNOTE_KV: kv },
-            poe2,
-            'https://discord.test/webhook',
-            'fetch failed: 503'
-        )).resolves.toBe('disabled_by_source_config');
+        expect(disabledAlertSources).toHaveLength(2);
+
+        for (const source of disabledAlertSources) {
+            expect(source.sourceFailureAlertsEnabled).toBe(false);
+            await expect(__testables.notifySourceFailure(
+                { PATCHNOTE_KV: kv },
+                source,
+                'https://discord.test/webhook',
+                'synthetic upstream error'
+            )).resolves.toBe('disabled_by_source_config');
+        }
 
         expect(fetchMock).not.toHaveBeenCalled();
         expect(kv.get).not.toHaveBeenCalled();

@@ -132,6 +132,7 @@ const SOURCES = [
             'https://overwatch.blizzard.com/en-us/news/patch-notes/'
         ],
         forceFreshFetch: true,
+        sourceFailureAlertsEnabled: false,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_OW',
         parser: parseOverwatchPatchNotes,
         dedupeByUrl: false,
