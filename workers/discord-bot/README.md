@@ -5,7 +5,7 @@
 
 ## 通知元ごとの監視要件
 
-すべての一覧取得でキャッシュを回避し、取得・解析に失敗した場合は定期的に再試行する。復旧後は障害通知の抑止状態を解除する。
+すべての一覧取得でキャッシュを回避し、取得・解析に失敗した場合はDiscordへエラー通知せず、Workerログに記録して定期的に再試行する。個別Webhookへの送信失敗は、復旧後に抑止状態を解除して監視用Webhookへ通知する。
 
 | 通知 | 公式ソース | 検出対象 | 取得上限 |
 | --- | --- | --- | --- |
@@ -51,7 +51,7 @@ npx wrangler secret put DISCORD_WEBHOOK_URL_GENSHIN_NEWS
 npx wrangler secret put DISCORD_ALERT_WEBHOOK_URL
 ```
 
-`DISCORD_ALERT_WEBHOOK_URL` は、各通知元の取得・解析失敗と、個別Webhookへの送信失敗を集約する監視用Webhook。送信失敗は同じWebhookでは通知できないため、この設定を必須とする。未設定時も取得失敗は該当通知先へ一度だけ警告するが、送信失敗はWorkerログにだけ残る。
+`DISCORD_ALERT_WEBHOOK_URL` は、個別Webhookへの送信失敗を集約する監視用Webhook。取得・解析失敗はDiscordへ通知せず、Workerログと定期再試行で確認する。監視用Webhookが未設定の場合、個別Webhookへの送信失敗は処理結果とWorkerログで確認する。
 `POST_ON_FIRST_RUN=true` は初回取得時にも最新1件だけ投稿する場合に設定する。過去記事の一括投稿は行わない。
 `keep_vars: true` により、既にダッシュボードで設定している変数をデプロイ時に保持する。
 
