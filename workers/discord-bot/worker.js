@@ -21,7 +21,7 @@ const FETCH_TIMEOUT_MILLISECONDS = 10000;
 const FETCH_RETRY_WAIT_MILLISECONDS = 1000;
 const SOURCE_FETCH_ATTEMPTS = 2;
 const SOURCE_CHECK_CONCURRENCY = 2;
-const SOURCE_FAILURE_ALERT_WEBHOOK_ENV_NAME = 'DISCORD_ALERT_WEBHOOK_URL';
+const DELIVERY_FAILURE_ALERT_WEBHOOK_ENV_NAME = 'DISCORD_ALERT_WEBHOOK_URL';
 const FF14_MAINTENANCE_ARTICLE_TIMEOUT_MILLISECONDS = 8000;
 const ENRICHMENT_FETCH_TIMEOUT_MILLISECONDS = 8000;
 const DISCORD_POST_TIMEOUT_MILLISECONDS = 10000;
@@ -132,7 +132,6 @@ const SOURCES = [
             'https://overwatch.blizzard.com/en-us/news/patch-notes/'
         ],
         forceFreshFetch: true,
-        sourceFailureAlertsEnabled: false,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_OW',
         parser: parseOverwatchPatchNotes,
         dedupeByUrl: false,
@@ -144,7 +143,6 @@ const SOURCES = [
         displayName: 'PoE2パッチノート',
         url: 'https://jp.pathofexile.com/forum/view-forum/2294',
         forceFreshFetch: true,
-        sourceFailureAlertsEnabled: false,
         webhookEnvName: 'DISCORD_WEBHOOK_URL_POE2',
         parser: parsePoe2PatchNotes,
         checkMultiple: true,
@@ -286,7 +284,7 @@ async function runSourceCheck(env, source) {
         const listHtml = await fetchSourceText(source);
 
         if (!listHtml) {
-            await recordSourceFailure(results, env, source, webhookUrl, 'failed to fetch source page');
+            recordSourceFailure(results, source, 'failed to fetch source page');
             return results;
         }
 
@@ -294,18 +292,16 @@ async function runSourceCheck(env, source) {
         const patchNotes = getValidPatchNotes(parsedPatchNotes);
 
         if (patchNotes.length === 0) {
-            await recordSourceFailure(results, env, source, webhookUrl, 'latest patch note was not found');
+            recordSourceFailure(results, source, 'latest patch note was not found');
             return results;
         }
-
-        await clearSourceFailureAlert(env, source);
 
         const resultStartIndex = results.length;
         await processPatchNotes(env, source, webhookUrl, patchNotes, results);
         await updateDeliveryFailureAlert(env, source, webhookUrl, results.slice(resultStartIndex));
     } catch (error) {
         const failureMessage = getSourceFailureMessage(error);
-        await recordSourceFailure(results, env, source, webhookUrl, failureMessage);
+        recordSourceFailure(results, source, failureMessage);
         console.warn(JSON.stringify({
             game: source.game,
             status: 'source_processing_failed',
@@ -329,16 +325,14 @@ function getValidPatchNotes(parsedPatchNotes) {
     });
 }
 
-async function recordSourceFailure(results, env, source, webhookUrl, message) {
-    const alertStatus = await notifySourceFailure(env, source, webhookUrl, message);
-
+const recordSourceFailure = (results, source, message) => {
     results.push({
         game: source.game,
         status: 'error',
         message: message,
-        alertStatus: alertStatus
+        alertStatus: 'disabled'
     });
-}
+};
 
 async function fetchSourceText(source) {
     const urls = [source.url].concat(source.supplementalUrls || []);
@@ -388,10 +382,6 @@ function getSourceFetchOptions(source, options = {}) {
     };
 }
 
-function getSourceFailureAlertKey(source) {
-    return 'source-failure-alert:' + source.game;
-}
-
 function getDeliveryFailureAlertKey(source) {
     return 'delivery-failure-alert:' + source.game;
 }
@@ -400,26 +390,8 @@ function getSourceDisplayName(source) {
     return source.displayName || `${source.game} 更新情報`;
 }
 
-const notifySourceFailure = async (env, source, sourceWebhookUrl, reason) => {
-    if (source && source.sourceFailureAlertsEnabled === false) {
-        return 'disabled_by_source_config';
-    }
-
-    const webhookUrl = env && (env[SOURCE_FAILURE_ALERT_WEBHOOK_ENV_NAME] || sourceWebhookUrl);
-
-    return sendFailureAlert(
-        env,
-        source,
-        getSourceFailureAlertKey(source),
-        webhookUrl,
-        `⚠️ ${getSourceDisplayName(source)}を取得できません`,
-        '公式サイトから一覧を取得または解析できませんでした。復旧するまで定期的に再試行します。' +
-            '\n発生理由: ' + reason
-    );
-};
-
 async function notifyDeliveryFailure(env, source, reason) {
-    const webhookUrl = env && env[SOURCE_FAILURE_ALERT_WEBHOOK_ENV_NAME];
+    const webhookUrl = env && env[DELIVERY_FAILURE_ALERT_WEBHOOK_ENV_NAME];
 
     return sendFailureAlert(
         env,
@@ -467,10 +439,6 @@ async function sendFailureAlert(env, source, alertKey, webhookUrl, title, descri
         }));
         return 'failed';
     }
-}
-
-async function clearSourceFailureAlert(env, source) {
-    await clearFailureAlert(env, source, getSourceFailureAlertKey(source), 'source_failure_alert_reset_failed');
 }
 
 async function clearDeliveryFailureAlert(env, source) {
@@ -2460,7 +2428,6 @@ export const __testables = {
     SOURCES,
     applySourceDedupeOptions,
     buildGenshinArticleUrl,
-    clearSourceFailureAlert,
     fetchSourceText,
     getDiscordPresentation,
     getSourceFetchOptions,
@@ -2469,7 +2436,6 @@ export const __testables = {
     isFf14MaintenanceNewsTitle,
     isPostedPatchNote,
     mapWithConcurrency,
-    notifySourceFailure,
     parseGenshinContentListApi,
     parseGenshinOfficialNews,
     parseFf14PatchNotes,

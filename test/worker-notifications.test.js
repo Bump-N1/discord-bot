@@ -542,51 +542,7 @@ describe('patch note Worker', function() {
         ]);
     });
 
-    it('失敗アラートが存在しない場合はKV削除を省略し、存在時だけ削除する', async function() {
-        const source = __testables.SOURCES.find(function(item) {
-            return item.game === 'FF14_MAINTENANCE';
-        });
-        let alertValue = null;
-        const kv = {
-            get: vi.fn(async function() {
-                return alertValue;
-            }),
-            delete: vi.fn(async function() {
-                alertValue = null;
-            })
-        };
-        const env = { PATCHNOTE_KV: kv };
-
-        await __testables.clearSourceFailureAlert(env, source);
-
-        expect(kv.get).toHaveBeenCalledWith('source-failure-alert:FF14_MAINTENANCE');
-        expect(kv.delete).not.toHaveBeenCalled();
-
-        alertValue = JSON.stringify({ alertedAt: '2026-09-25T00:00:00.000Z' });
-        await __testables.clearSourceFailureAlert(env, source);
-
-        expect(kv.get).toHaveBeenCalledTimes(2);
-        expect(kv.delete).toHaveBeenCalledTimes(1);
-        expect(kv.delete).toHaveBeenCalledWith('source-failure-alert:FF14_MAINTENANCE');
-    });
-
-    it('失敗アラートの存在確認に失敗しても削除を試みる', async function() {
-        const source = __testables.SOURCES.find(function(item) {
-            return item.game === 'FF14_MAINTENANCE';
-        });
-        const kv = {
-            get: vi.fn(async function() {
-                throw new Error('temporary KV read failure');
-            }),
-            delete: vi.fn(async function() {})
-        };
-
-        await __testables.clearSourceFailureAlert({ PATCHNOTE_KV: kv }, source);
-
-        expect(kv.delete).toHaveBeenCalledWith('source-failure-alert:FF14_MAINTENANCE');
-    });
-
-    it('FF14メンテナンス取得失敗は一度だけ警告し、復旧後の再発は再通知する', async function() {
+    it('FF14メンテナンス取得失敗はDiscord通知せず、復旧後も通常通知を続ける', async () => {
         const source = __testables.SOURCES.find(function(item) {
             return item.game === 'FF14_MAINTENANCE';
         });
@@ -630,7 +586,7 @@ describe('patch note Worker', function() {
         try {
             const firstResults = await __testables.runPatchNoteChecks(env);
             const secondResults = await __testables.runPatchNoteChecks(env);
-            const alertCount = function() {
+            const alertCount = () => {
                 return webhookPosts.filter(function(payload) {
                     return payload.embeds[0].description.includes('⚠️ FF14メンテナンス情報を取得できません');
                 }).length;
@@ -647,7 +603,7 @@ describe('patch note Worker', function() {
                 message: expect.stringContaining('source fetch failed (FF14_MAINTENANCE):')
             }));
             expect(sourceRequestCount).toBe(8);
-            expect(alertCount()).toBe(1);
+            expect(alertCount()).toBe(0);
 
             sourceAvailable = true;
             const emptyResults = await __testables.runPatchNoteChecks(env);
@@ -657,9 +613,9 @@ describe('patch note Worker', function() {
                 status: 'error',
                 message: 'latest patch note was not found'
             }));
-            expect(alertCount()).toBe(1);
+            expect(alertCount()).toBe(0);
 
-            source.parser = async function() {
+            source.parser = async () => {
                 return [{
                     id: 'synthetic-maintenance',
                     title: 'Synthetic maintenance',
@@ -676,12 +632,11 @@ describe('patch note Worker', function() {
                 status: 'posted',
                 url: 'https://example.test/maintenance/synthetic'
             }));
-            expect(values.has('source-failure-alert:FF14_MAINTENANCE')).toBe(false);
 
             sourceAvailable = false;
             await __testables.runPatchNoteChecks(env);
 
-            expect(alertCount()).toBe(2);
+            expect(alertCount()).toBe(0);
             expect(sourceRequestCount).toBe(15);
         } finally {
             source.parser = originalParser;
@@ -695,7 +650,7 @@ describe('patch note Worker', function() {
         }
     });
 
-    it('全通知元は公式URL、複数件取得、障害監視の要件を持つ', function() {
+    it('全通知元は公式URLと複数件取得の要件を持つ', function() {
         const allowedHosts = new Set([
             'jp.finalfantasyxiv.com',
             'www.leagueoflegends.com',
@@ -738,32 +693,60 @@ describe('patch note Worker', function() {
         expect(__testables.getSourceFetchOptions(ff14Maintenance).attempts).toBe(3);
     });
 
-    it('PoE2とOWの取得失敗はDiscordへ通知せず、KVの失敗通知状態にも触れない', async () => {
-        const disabledAlertSources = __testables.SOURCES.filter((source) => {
-            return ['PoE2', 'OW'].includes(source.game);
-        });
+    it('全通知元の取得失敗はDiscord通知も失敗通知用KVアクセスも発生させない', async () => {
+        const sourceConfigs = __testables.SOURCES.map((source) => ({
+            source: source,
+            fetchAttempts: source.fetchAttempts,
+            fetchRetryWaitMilliseconds: source.fetchRetryWaitMilliseconds
+        }));
+        const webhookPosts = [];
         const kv = {
-            get: vi.fn(),
-            put: vi.fn()
+            get: vi.fn(async () => null),
+            put: vi.fn(async () => {}),
+            delete: vi.fn(async () => {})
         };
-        const fetchMock = vi.fn();
-        vi.stubGlobal('fetch', fetchMock);
+        const env = { PATCHNOTE_KV: kv };
 
-        expect(disabledAlertSources).toHaveLength(2);
-
-        for (const source of disabledAlertSources) {
-            expect(source.sourceFailureAlertsEnabled).toBe(false);
-            await expect(__testables.notifySourceFailure(
-                { PATCHNOTE_KV: kv },
-                source,
-                'https://discord.test/webhook',
-                'synthetic upstream error'
-            )).resolves.toBe('disabled_by_source_config');
+        for (const { source } of sourceConfigs) {
+            env[source.webhookEnvName] = `https://discord.test/${source.game}`;
+            source.fetchAttempts = 1;
+            source.fetchRetryWaitMilliseconds = 0;
         }
 
-        expect(fetchMock).not.toHaveBeenCalled();
-        expect(kv.get).not.toHaveBeenCalled();
-        expect(kv.put).not.toHaveBeenCalled();
+        vi.stubGlobal('fetch', async (input, options) => {
+            if (String(input).startsWith('https://discord.test/')) {
+                webhookPosts.push({ input: String(input), body: options.body });
+                return new Response(null, { status: 204 });
+            }
+
+            return new Response(null, { status: 503 });
+        });
+
+        try {
+            const results = await __testables.runPatchNoteChecks(env);
+            const sourceErrors = results.filter((result) => result.status === 'error');
+
+            expect(sourceErrors).toHaveLength(__testables.SOURCES.length);
+            expect(sourceErrors.every((result) => result.alertStatus === 'disabled')).toBe(true);
+            expect(webhookPosts).toEqual([]);
+            expect(kv.get).not.toHaveBeenCalled();
+            expect(kv.put).not.toHaveBeenCalled();
+            expect(kv.delete).not.toHaveBeenCalled();
+        } finally {
+            for (const config of sourceConfigs) {
+                if (config.fetchAttempts === undefined) {
+                    delete config.source.fetchAttempts;
+                } else {
+                    config.source.fetchAttempts = config.fetchAttempts;
+                }
+
+                if (config.fetchRetryWaitMilliseconds === undefined) {
+                    delete config.source.fetchRetryWaitMilliseconds;
+                } else {
+                    config.source.fetchRetryWaitMilliseconds = config.fetchRetryWaitMilliseconds;
+                }
+            }
+        }
     });
 
     it('通知元の確認は同時に2件までに制限して結果順を保持する', async function() {
