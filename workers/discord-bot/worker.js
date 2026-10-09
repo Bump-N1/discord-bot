@@ -843,16 +843,24 @@ async function parseOverwatchPatchNotes(html, baseUrl, _game, source) {
     const text = htmlToText(html);
     const maxItems = source && source.maxItems ? source.maxItems : 1;
     const structuredCandidates = extractOverwatchStructuredCandidates(html);
-    const japaneseCandidates = structuredCandidates.length > 0
-        ? structuredCandidates
-        : extractOverwatchTextCandidates(text, [
-            /\[(?:オーバーウォッチ 2|オーバーウォッチ)\][^。]{0,220}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
-            /(?:オーバーウォッチ 2|オーバーウォッチ)[^。]{0,80}?20\d{2}年\d{1,2}月\d{1,2}日[^。]{0,180}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
-            /20\d{2}年\d{1,2}月\d{1,2}日\s*(?:配信パッチ内容|パッチ内容|パッチノート|アップデート)(?:のお知らせ|のおしらせ)?/g
-        ]);
-    const candidates = uniqueOverwatchCandidates(japaneseCandidates.concat(
-        extractOverwatchEnglishCandidates(text)
-    ));
+    const textCandidates = extractOverwatchTextCandidates(text, [
+        /\[(?:オーバーウォッチ 2|オーバーウォッチ)\][^。]{0,220}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
+        /(?:オーバーウォッチ 2|オーバーウォッチ)[^。]{0,80}?20\d{2}年\d{1,2}月\d{1,2}日[^。]{0,180}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
+        /20\d{2}年\d{1,2}月\d{1,2}日\s*(?:配信パッチ内容|パッチ内容|パッチノート|アップデート)(?:のお知らせ|のおしらせ)?/g
+    ]);
+    const unrelatedTextCandidates = structuredCandidates.length === 0
+        ? textCandidates
+        : textCandidates.filter((textCandidate) => {
+            const candidateTitle = textCandidate.title.toLocaleLowerCase();
+            return !structuredCandidates.some((structuredCandidate) => {
+                return candidateTitle.includes(structuredCandidate.sourceTitle.toLocaleLowerCase());
+            });
+        });
+    const candidates = uniqueOverwatchCandidates(
+        structuredCandidates
+            .concat(unrelatedTextCandidates)
+            .concat(extractOverwatchEnglishCandidates(text))
+    );
 
     if (candidates.length === 0) {
         return null;
@@ -928,14 +936,16 @@ function extractOverwatchStructuredCandidates(html) {
         ]);
         const dateValue = convertOverwatchDateToNumber(dateText);
         const formattedDate = dateValue > 0 ? formatOverwatchJapaneseDate(dateValue) : '';
+        const sourceTitle = cleanupText(title).replace(/(?:のおしらせ|のお知らせ)$/, '');
         const normalizedTitle = title.includes('オーバーウォッチ')
-            ? cleanupText(title).replace(/(?:のおしらせ|のお知らせ)$/, '')
+            ? sourceTitle
             : (formattedDate
                 ? `[オーバーウォッチ] ${formattedDate}配信パッチ内容`
                 : title);
 
         candidates.push({
             title: normalizedTitle,
+            sourceTitle: sourceTitle,
             date: formattedDate,
             dateValue: dateValue
         });

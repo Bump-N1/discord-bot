@@ -867,6 +867,72 @@ describe('patch note Worker', function() {
         })]);
     });
 
+    it('OWは構造化記事があっても独立した平文更新を残し、誤った掲載日は通知しない', async () => {
+        const source = {
+            ...getSourceForParser(__testables.parseOverwatchPatchNotes),
+            postLatestOnFirstRun: true
+        };
+        const releaseDate = createFixtureDate();
+        const publishedDate = offsetFixtureDate(releaseDate, -1);
+        const textOnlyReleaseDate = offsetFixtureDate(releaseDate, 1);
+        const formattedReleaseDate = formatOverwatchFixtureDate(releaseDate);
+        const formattedPublishedDate = formatOverwatchFixtureDate(publishedDate);
+        const formattedTextOnlyReleaseDate = formatOverwatchFixtureDate(textOnlyReleaseDate);
+        const structuredTitle = `[オーバーウォッチ] ${formattedReleaseDate}配信パッチ内容`;
+        const textOnlyTitle = `[オーバーウォッチ] ${formattedTextOnlyReleaseDate}配信パッチ内容`;
+        const html = [
+            '<h1>オーバーウォッチ</h1>',
+            `<div class="PatchNotes-page-date">${formattedPublishedDate}</div>`,
+            '<div class="PatchNotes-patch PatchNotes-live">',
+            `<div class="PatchNotes-date">${formattedPublishedDate}</div>`,
+            `<h3 class="PatchNotes-patchTitle">${structuredTitle}のおしらせ</h3>`,
+            '</div>',
+            `<div>${textOnlyTitle}のおしらせ</div>`
+        ].join('');
+        const patchNotes = await __testables.parseOverwatchPatchNotes(
+            html,
+            source.url,
+            source.game,
+            source
+        );
+        const values = new Map();
+        const posts = [];
+        const env = {
+            PATCHNOTE_KV: {
+                get: async (key) => values.get(key) || null,
+                put: async (key, value) => values.set(key, value)
+            }
+        };
+
+        vi.stubGlobal('fetch', async (_input, options) => {
+            posts.push(JSON.parse(options.body));
+            return new Response('', { status: 200 });
+        });
+
+        expect(patchNotes.map((patchNote) => patchNote.title)).toEqual([
+            textOnlyTitle,
+            structuredTitle
+        ]);
+
+        const results = [];
+        await __testables.processPatchNotes(
+            env,
+            source,
+            'https://discord.test/ow-webhook',
+            patchNotes,
+            results
+        );
+
+        expect(posts).toHaveLength(1);
+        expect(posts[0].embeds[0].description).toContain(`**${textOnlyTitle}**`);
+        expect(posts[0].embeds[0].description).not.toContain(formattedPublishedDate);
+        expect(results).toEqual([expect.objectContaining({
+            game: 'OW',
+            status: 'posted',
+            title: textOnlyTitle
+        })]);
+    });
+
     it('PoE2は公式フォーラムのホットフィックスも通知対象にする', async function() {
         const fixture = createPoe2ForumFixture();
         const result = await __testables.parsePoe2PatchNotes(
