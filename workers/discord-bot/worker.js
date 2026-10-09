@@ -336,20 +336,22 @@ const recordSourceFailure = (results, source, message) => {
 
 async function fetchSourceText(source) {
     const urls = [source.url].concat(source.supplementalUrls || []);
-    const responses = await Promise.all(urls.map(async function(url) {
+    const responses = await Promise.all(urls.map(async (url) => {
         try {
             return {
+                url: url,
                 text: await fetchText(url, getSourceFetchOptions(source)),
                 error: null
             };
         } catch (error) {
             return {
+                url: url,
                 text: '',
                 error: error
             };
         }
     }));
-    const responseText = responses.map(function(response) {
+    const responseText = responses.map((response) => {
         return response.text;
     }).filter(Boolean).join('\n');
 
@@ -357,9 +359,14 @@ async function fetchSourceText(source) {
         return responseText;
     }
 
-    const failures = responses.map(function(response) {
-        return response.error && response.error.message;
-    }).filter(Boolean);
+    const failures = Array.from(new Set(responses.flatMap((response) => {
+        if (!response.error || !response.error.message) {
+            return [];
+        }
+
+        const message = String(response.error.message).replace(response.url, '').trim();
+        return message ? [message] : [];
+    })));
 
     if (failures.length > 0) {
         throw new Error(`source fetch failed (${source.game}): ${failures.join(' | ')}`);

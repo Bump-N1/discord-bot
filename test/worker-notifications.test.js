@@ -787,8 +787,27 @@ describe('patch note Worker', function() {
         });
 
         await expect(__testables.fetchSourceText(source)).rejects.toThrow(
-            `source fetch failed (${source.game}): fetch failed: 503 ${source.url}`
+            `source fetch failed (${source.game}): fetch failed: 503`
         );
+    });
+
+    it('OWの一覧取得エラーはURLを重ねず、同じ失敗理由を一度だけ返す', async () => {
+        const source = {
+            ...getSourceForParser(__testables.parseOverwatchPatchNotes),
+            fetchAttempts: 1,
+            fetchRetryWaitMilliseconds: 0
+        };
+        const requestedUrls = [];
+
+        vi.stubGlobal('fetch', async (url) => {
+            requestedUrls.push(String(url));
+            throw new DOMException('The operation was aborted.', 'AbortError');
+        });
+
+        await expect(__testables.fetchSourceText(source)).rejects.toThrow(
+            'source fetch failed (OW): fetch failed: timeout after 10000ms'
+        );
+        expect(requestedUrls).toEqual([source.url].concat(source.supplementalUrls));
     });
 
     it('OWは掲載日と配信日の異なる公式記事を配信日ごとに一件だけ解析し、掲載日は通知に含めない', async function() {
