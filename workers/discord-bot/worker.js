@@ -336,22 +336,20 @@ const recordSourceFailure = (results, source, message) => {
 
 async function fetchSourceText(source) {
     const urls = [source.url].concat(source.supplementalUrls || []);
-    const responses = await Promise.all(urls.map(async (url) => {
+    const responses = await Promise.all(urls.map(async function(url) {
         try {
             return {
-                url: url,
                 text: await fetchText(url, getSourceFetchOptions(source)),
                 error: null
             };
         } catch (error) {
             return {
-                url: url,
                 text: '',
                 error: error
             };
         }
     }));
-    const responseText = responses.map((response) => {
+    const responseText = responses.map(function(response) {
         return response.text;
     }).filter(Boolean).join('\n');
 
@@ -359,14 +357,9 @@ async function fetchSourceText(source) {
         return responseText;
     }
 
-    const failures = Array.from(new Set(responses.flatMap((response) => {
-        if (!response.error || !response.error.message) {
-            return [];
-        }
-
-        const message = String(response.error.message).replace(response.url, '').trim();
-        return message ? [message] : [];
-    })));
+    const failures = responses.map(function(response) {
+        return response.error && response.error.message;
+    }).filter(Boolean);
 
     if (failures.length > 0) {
         throw new Error(`source fetch failed (${source.game}): ${failures.join(' | ')}`);
@@ -849,16 +842,17 @@ async function parseRiotPatchNotes(listHtml, baseUrl, game, source) {
 async function parseOverwatchPatchNotes(html, baseUrl, _game, source) {
     const text = htmlToText(html);
     const maxItems = source && source.maxItems ? source.maxItems : 1;
-    const japaneseCandidates = extractOverwatchTextCandidates(text, [
-        /\[(?:オーバーウォッチ 2|オーバーウォッチ)\][^。]{0,220}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
-        /(?:オーバーウォッチ 2|オーバーウォッチ)[^。]{0,80}?20\d{2}年\d{1,2}月\d{1,2}日[^。]{0,180}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
-        /20\d{2}年\d{1,2}月\d{1,2}日\s*(?:配信パッチ内容|パッチ内容|パッチノート|アップデート)(?:のお知らせ|のおしらせ)?/g
-    ]);
-    const candidates = uniqueOverwatchCandidates(
-        japaneseCandidates
-            .concat(extractOverwatchEnglishCandidates(text))
-            .concat(extractOverwatchStructuredCandidates(html))
-    );
+    const structuredCandidates = extractOverwatchStructuredCandidates(html);
+    const japaneseCandidates = structuredCandidates.length > 0
+        ? structuredCandidates
+        : extractOverwatchTextCandidates(text, [
+            /\[(?:オーバーウォッチ 2|オーバーウォッチ)\][^。]{0,220}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
+            /(?:オーバーウォッチ 2|オーバーウォッチ)[^。]{0,80}?20\d{2}年\d{1,2}月\d{1,2}日[^。]{0,180}?(?:お知らせ|おしらせ|パッチ内容|パッチノート|アップデート)/g,
+            /20\d{2}年\d{1,2}月\d{1,2}日\s*(?:配信パッチ内容|パッチ内容|パッチノート|アップデート)(?:のお知らせ|のおしらせ)?/g
+        ]);
+    const candidates = uniqueOverwatchCandidates(japaneseCandidates.concat(
+        extractOverwatchEnglishCandidates(text)
+    ));
 
     if (candidates.length === 0) {
         return null;
@@ -933,10 +927,16 @@ function extractOverwatchStructuredCandidates(html) {
             /20\d{2}[/-]\d{1,2}[/-]\d{1,2}/
         ]);
         const dateValue = convertOverwatchDateToNumber(dateText);
+        const formattedDate = dateValue > 0 ? formatOverwatchJapaneseDate(dateValue) : '';
+        const normalizedTitle = title.includes('オーバーウォッチ')
+            ? cleanupText(title).replace(/(?:のおしらせ|のお知らせ)$/, '')
+            : (formattedDate
+                ? `[オーバーウォッチ] ${formattedDate}配信パッチ内容`
+                : title);
 
         candidates.push({
-            title: title,
-            date: dateValue > 0 ? formatOverwatchJapaneseDate(dateValue) : '',
+            title: normalizedTitle,
+            date: formattedDate,
             dateValue: dateValue
         });
     }

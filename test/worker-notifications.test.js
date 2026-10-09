@@ -787,27 +787,8 @@ describe('patch note Worker', function() {
         });
 
         await expect(__testables.fetchSourceText(source)).rejects.toThrow(
-            `source fetch failed (${source.game}): fetch failed: 503`
+            `source fetch failed (${source.game}): fetch failed: 503 ${source.url}`
         );
-    });
-
-    it('OWの一覧取得エラーはURLを重ねず、同じ失敗理由を一度だけ返す', async () => {
-        const source = {
-            ...getSourceForParser(__testables.parseOverwatchPatchNotes),
-            fetchAttempts: 1,
-            fetchRetryWaitMilliseconds: 0
-        };
-        const requestedUrls = [];
-
-        vi.stubGlobal('fetch', async (url) => {
-            requestedUrls.push(String(url));
-            throw new DOMException('The operation was aborted.', 'AbortError');
-        });
-
-        await expect(__testables.fetchSourceText(source)).rejects.toThrow(
-            'source fetch failed (OW): fetch failed: timeout after 10000ms'
-        );
-        expect(requestedUrls).toEqual([source.url].concat(source.supplementalUrls));
     });
 
     it('OWは掲載日と配信日の異なる公式記事を配信日ごとに一件だけ解析し、掲載日は通知に含めない', async function() {
@@ -825,6 +806,65 @@ describe('patch note Worker', function() {
         expect(result.every(function(patchNote) {
             return !Object.hasOwn(patchNote, 'date');
         })).toBe(true);
+    });
+
+    it('OWは一覧見出しと掲載日を配信日として誤検出せず、配信日だけを通知する', async () => {
+        const source = {
+            ...getSourceForParser(__testables.parseOverwatchPatchNotes),
+            postLatestOnFirstRun: true
+        };
+        const releaseDate = createFixtureDate();
+        const publishedDate = offsetFixtureDate(releaseDate, -1);
+        const formattedReleaseDate = formatOverwatchFixtureDate(releaseDate);
+        const formattedPublishedDate = formatOverwatchFixtureDate(publishedDate);
+        const releaseTitle = `[オーバーウォッチ] ${formattedReleaseDate}配信パッチ内容`;
+        const html = [
+            '<h1>オーバーウォッチ</h1>',
+            `<div class="PatchNotes-page-date">${formattedPublishedDate}</div>`,
+            '<div class="PatchNotes-patch PatchNotes-live">',
+            `<div class="PatchNotes-date">${formattedPublishedDate}</div>`,
+            `<h3 class="PatchNotes-patchTitle">${releaseTitle}のおしらせ</h3>`,
+            '</div>'
+        ].join('');
+        const patchNotes = await __testables.parseOverwatchPatchNotes(
+            html,
+            source.url,
+            source.game,
+            source
+        );
+        const values = new Map();
+        const posts = [];
+        const env = {
+            PATCHNOTE_KV: {
+                get: async (key) => values.get(key) || null,
+                put: async (key, value) => values.set(key, value)
+            }
+        };
+
+        vi.stubGlobal('fetch', async (_input, options) => {
+            posts.push(JSON.parse(options.body));
+            return new Response('', { status: 200 });
+        });
+
+        expect(patchNotes.map((patchNote) => patchNote.title)).toEqual([releaseTitle]);
+
+        const results = [];
+        await __testables.processPatchNotes(
+            env,
+            source,
+            'https://discord.test/ow-webhook',
+            patchNotes,
+            results
+        );
+
+        expect(posts).toHaveLength(1);
+        expect(posts[0].embeds[0].description).toContain(`**${releaseTitle}**`);
+        expect(posts[0].embeds[0].description).not.toContain(formattedPublishedDate);
+        expect(results).toEqual([expect.objectContaining({
+            game: 'OW',
+            status: 'posted',
+            title: releaseTitle
+        })]);
     });
 
     it('PoE2は公式フォーラムのホットフィックスも通知対象にする', async function() {
