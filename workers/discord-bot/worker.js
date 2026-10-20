@@ -859,7 +859,6 @@ async function parseOverwatchPatchNotes(html, baseUrl, _game, source) {
     const candidates = uniqueOverwatchCandidates(
         structuredCandidates
             .concat(unrelatedTextCandidates)
-            .concat(extractOverwatchEnglishCandidates(text))
     );
 
     if (candidates.length === 0) {
@@ -890,33 +889,6 @@ async function parseOverwatchPatchNotes(html, baseUrl, _game, source) {
         });
 }
 
-function extractOverwatchEnglishCandidates(text) {
-    const candidates = [];
-    const patterns = [
-        /Overwatch(?: 2)?(?: Retail)? Patch Notes\s*[-–—:]\s*([A-Z][a-z]+\.? \d{1,2}, 20\d{2})/g,
-        /Overwatch(?: 2)?(?: Retail)? Patch Notes\s*[-–—:]\s*(20\d{2}[/-]\d{1,2}[/-]\d{1,2})/g
-    ];
-
-    for (const pattern of patterns) {
-        for (const match of String(text || '').matchAll(pattern)) {
-            const dateText = cleanupText(match[1]);
-            const dateValue = convertOverwatchDateToNumber(dateText);
-
-            if (!dateValue) {
-                continue;
-            }
-
-            candidates.push({
-                title: `[オーバーウォッチ] ${formatOverwatchJapaneseDate(dateValue)}配信パッチ内容`,
-                date: formatOverwatchJapaneseDate(dateValue),
-                dateValue: dateValue
-            });
-        }
-    }
-
-    return candidates;
-}
-
 function extractOverwatchStructuredCandidates(html) {
     const candidates = [];
     const patchBlockPattern = /<div\b[^>]*class=["'][^"']*\bPatchNotes-patch(?:\s|["'])[^>]*>[\s\S]*?(?=<div\b[^>]*class=["'][^"']*\bPatchNotes-patch(?:\s|["'])|<div\b[^>]*class=["'][^"']*\bPatchNotesPagination(?:\s|["'])|<\/main>|$)/gi;
@@ -925,7 +897,7 @@ function extractOverwatchStructuredCandidates(html) {
         const block = match[0];
         const title = extractOverwatchClassText(block, 'PatchNotes-patchTitle');
 
-        if (!title) {
+        if (!title || !/(?:配信パッチ内容|パッチ内容|パッチノート|アップデート)/.test(title)) {
             continue;
         }
 
