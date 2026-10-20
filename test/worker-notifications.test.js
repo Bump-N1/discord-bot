@@ -238,13 +238,17 @@ describe('patch note Worker', function() {
         })]);
     });
 
-    it('OW はキャッシュを回避し英語公式ページからも最新更新を補完する', async function() {
+    it('OWは日本語の配信日を優先し、英語ページの日付から別通知を作らない', async function() {
         const source = getSourceForParser(__testables.parseOverwatchPatchNotes);
-        const latestDate = createFixtureDate();
-        const latestDateText = formatOverwatchFixtureDate(latestDate);
+        const releaseDate = createFixtureDate();
+        const publishedDate = offsetFixtureDate(releaseDate, -1);
+        const formattedReleaseDate = formatOverwatchFixtureDate(releaseDate);
+        const formattedPublishedDate = formatOverwatchFixtureDate(publishedDate);
+        const japanesePatch = createOverwatchJapanesePatchFixture(releaseDate);
+        const englishPublishedDate = formatOverwatchEnglishFixtureDate(publishedDate);
         const requests = [];
 
-        vi.stubGlobal('fetch', async function(url, options) {
+        vi.stubGlobal('fetch', async (url, options) => {
             const requestUrl = String(url);
             requests.push({
                 url: requestUrl,
@@ -252,30 +256,32 @@ describe('patch note Worker', function() {
             });
 
             const body = requestUrl.includes('/en-us/')
-                ? createOverwatchEnglishPatchHtml(latestDate)
-                : `<div>${createOverwatchJapanesePatchFixture(offsetFixtureDate(latestDate, -1)).title}</div>`;
+                ? `<div class="PatchNotes-patch"><h3 class="PatchNotes-patchTitle">Overwatch Retail Patch Notes – ${englishPublishedDate}</h3></div>`
+                : [
+                    `<div class="PatchNotes-page-date">${formattedPublishedDate}</div>`,
+                    '<div class="PatchNotes-patch PatchNotes-live">',
+                    `<div class="PatchNotes-date">${formattedPublishedDate}</div>`,
+                    `<h3 class="PatchNotes-patchTitle">${japanesePatch.title}</h3>`,
+                    '</div>'
+                ].join('');
 
             return {
                 ok: true,
-                text: async function() {
-                    return body;
-                }
+                text: async () => body
             };
         });
 
         const html = await __testables.fetchSourceText(source);
         const result = await __testables.parseOverwatchPatchNotes(html, source.url);
-        const expectedTitle = `[オーバーウォッチ] ${latestDateText}配信パッチ内容`;
+        const expectedTitle = `[オーバーウォッチ] ${formattedReleaseDate}配信パッチ内容`;
 
         expect(result).toEqual([expect.objectContaining({
-            id: `${latestDateText}:${expectedTitle}`,
+            id: `${formattedReleaseDate}:${expectedTitle}`,
             title: expectedTitle,
             url: source.url
         })]);
         const expectedRequestUrls = [source.url].concat(source.supplementalUrls || []);
-        expect(requests.map(function(request) {
-            return request.url;
-        })).toEqual(expectedRequestUrls);
+        expect(requests.map((request) => request.url)).toEqual(expectedRequestUrls);
 
         for (const request of requests) {
             expect(request.options.cache).toBe('no-store');
@@ -1072,11 +1078,10 @@ describe('patch note Worker', function() {
         expect(unique).toHaveLength(1);
     });
 
-    it('OWは英語見出しの日付を採用し、公開日を通知に含めない', async function() {
+    it('OWは英語見出しの日付だけでは配信通知を作らない', async function() {
         const source = getSourceForParser(__testables.parseOverwatchPatchNotes);
         const releaseDate = createFixtureDate();
         const publishedDate = offsetFixtureDate(releaseDate, -1);
-        const formattedReleaseDate = formatOverwatchFixtureDate(releaseDate);
         const html = [
             '<div class="PatchNotes-patch PatchNotes-live">',
             '<div class="anchor" id="patch-' + publishedDate.toISOString().slice(0, 10) + '"></div>',
@@ -1090,13 +1095,6 @@ describe('patch note Worker', function() {
             source.url
         );
 
-        expect(result).toEqual([
-            expect.objectContaining({
-                id: formattedReleaseDate + ':[オーバーウォッチ] ' + formattedReleaseDate + '配信パッチ内容',
-                title: '[オーバーウォッチ] ' + formattedReleaseDate + '配信パッチ内容',
-                url: source.url
-            })
-        ]);
-        expect(result[0]).not.toHaveProperty('date');
+        expect(result).toBeNull();
     });
 });
